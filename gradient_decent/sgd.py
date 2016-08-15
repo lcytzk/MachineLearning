@@ -26,17 +26,12 @@ class LinearReg:
 		self.stepSize = 0.1
 
 	def getLoss(self, y, x):
-		return y - jdotj(self.w, x)
+		return y - jdotj(x, self.w)
 
 	def getGradient(self, y, x):
-		tmp = [0 for i in xrange(len(x[0]))]
+		tmp = [0 for i in xrange(len(x))]
 		for j in xrange(len(tmp)):
-			tmpj = 0
-			for i, y_i in enumerate(y):
-				x_i = x[i]
-				x_j_i = x[i][j]
-				tmpj += self.getLoss(y_i, x_i) * x_j_i
-			tmp[j] += self.stepSize * tmpj / len(y)
+			tmp[j] += self.stepSize * self.getLoss(y, x) * x[j]
 			#print "%d\t%f" % (j, tmp[j])
 		return tmp
 			
@@ -51,25 +46,25 @@ def getAbs(l):
 	#print l, t
 	return t
 
-class GD:
+class OGD:
 
 	def __init__(self, loss, x, y, round):
-		self.stop = 0.0001
+		self.stop = 0.000001
 		self.round = round
 		self.realRound = 1
 		self.loss = loss
 		self.x = x
 		self.y = y
 
-	def runARound(self):
-		deltaG = self.loss.getGradient(self.y, self.x)
+	def runARound(self, y, x):
+		deltaG = self.loss.getGradient(y, x)
 		self.loss.updateWeight(deltaG)
 		return deltaG
 
 	def learn(self):
-		deltaG = self.runARound()
+		deltaG = self.runARound(self.y[0], self.x[0])
 		while self.realRound < self.round and self.stop < getAbs(deltaG):
-			deltaG = self.runARound()
+			deltaG = self.runARound(self.y[self.realRound], self.x[self.realRound])
 			self.realRound += 1
 		if self.realRound < self.round:
 			print "Reach the gap: %f" % getAbs(deltaG)
@@ -96,8 +91,8 @@ def test():
 	sampleSize = 5000
 	y, x, w = genRandomData(featureSize, sampleSize)
 	lg = LinearReg(featureSize)
-	gd = GD(lg, x, y, 1000)
-	gd.learn()
+	ogd = OGD(lg, x, y, 10000)
+	ogd.learn()
 	#print gd.loss.w, gd.realRound
 	allLoss = 0
 	for i, x_i in enumerate(x):
