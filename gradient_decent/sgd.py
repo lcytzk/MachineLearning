@@ -31,8 +31,7 @@ class LinearReg:
 	def getGradient(self, y, x):
 		tmp = [0 for i in xrange(len(x))]
 		for j in xrange(len(tmp)):
-			tmp[j] += self.stepSize * self.getLoss(y, x) * x[j]
-			#print "%d\t%f" % (j, tmp[j])
+			tmp[j] += self.stepSize * self.getLoss(y, x) * x[j] / len(x)
 		return tmp
 			
 	def updateWeight(self, deltaW):
@@ -43,13 +42,13 @@ def getAbs(l):
 	for i in l:
 		res += i*i
 	t = math.sqrt(res)
-	#print l, t
+	#print t
 	return t
 
 class OGD:
 
 	def __init__(self, loss, x, y, round):
-		self.stop = 0.000001
+		self.stop = 0.00001
 		self.round = round
 		self.realRound = 1
 		self.loss = loss
@@ -87,19 +86,19 @@ def genRandomData(featureSize, sampleSize):
 	return y,x,w
 
 def test():
-	featureSize = 20
-	sampleSize = 5000
+	featureSize = 2
+	sampleSize = 30000
 	y, x, w = genRandomData(featureSize, sampleSize)
 	lg = LinearReg(featureSize)
-	ogd = OGD(lg, x, y, 10000)
+	ogd = OGD(lg, x, y, sampleSize)
 	ogd.learn()
 	#print gd.loss.w, gd.realRound
 	allLoss = 0
 	for i, x_i in enumerate(x):
 		loss = lg.getLoss(y[i], x_i)
 		allLoss += loss
-	print "true model is %s" % (str(w))
-	print "my model is   %s" % (lg.w)
+	#print "true model is %s" % (str(w))
+	#print "my model is   %s" % (lg.w)
 	print "avgLoss: %f" % (allLoss/sampleSize)
 
 if __name__ == '__main__':
