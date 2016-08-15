@@ -36,18 +36,20 @@ class LinearReg:
 				x_i = x[i]
 				x_j_i = x[i][j]
 				tmpj += self.getLoss(y_i, x_i) * x_j_i
-			tmp[j] += self.stepSize * tmpj
+			tmp[j] += self.stepSize * tmpj / len(y)
 			#print "%d\t%f" % (j, tmp[j])
 		return tmp
 			
 	def updateWeight(self, deltaW):
-		self.w = jaddj(deltaW, ndotj(self.stepSize, self.w))
+		self.w = jaddj(deltaW, self.w)
 
 def getAbs(l):
 	res = 0
 	for i in l:
 		res += i*i
-	return math.sqrt(res)
+	t = math.sqrt(res)
+	#print l, t
+	return t
 
 class GD:
 
@@ -92,12 +94,12 @@ def genRandomData(featureSize, sampleSize):
 
 def test():
 	featureSize = 2
-	sampleSize = 50
+	sampleSize = 500
 	y, x, w = genRandomData(featureSize, sampleSize)
 	lg = LinearReg(featureSize)
-	gd = GD(lg, x, y, 100)
+	gd = GD(lg, x, y, 1000)
 	gd.learn()
-	print gd.loss.w, gd.realRound
+	#print gd.loss.w, gd.realRound
 	allLoss = 0
 	for i, x_i in enumerate(x):
 		loss = lg.getLoss(y[i], x_i)
@@ -105,7 +107,7 @@ def test():
 		#print "#%d#\t%f" % (i, loss)
 	print "true model is %s" % (str(w))
 	print "my model is   %s" % (lg.w)
-	#print "avgLoss: %f" % (allLoss/sampleSize)
+	print "avgLoss: %f" % (allLoss/sampleSize)
 
 if __name__ == '__main__':
 	test()
