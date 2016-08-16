@@ -86,7 +86,7 @@ def genRandomData(featureSize, sampleSize):
 	return y,x,w
 
 def test():
-	featureSize = 2
+	featureSize = 2000
 	sampleSize = 30000
 	y, x, w = genRandomData(featureSize, sampleSize)
 	lg = LinearReg(featureSize)
