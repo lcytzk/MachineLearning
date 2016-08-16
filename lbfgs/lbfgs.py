@@ -4,9 +4,6 @@ import math
 import random
 
 def jdotj(a, b):
-	if len(a) != len(b):
-		print 'Sizes are not equal!'
-		return
 	res = 0
 	for i in xrange(len(a)):
 		res += a[i]*b[i] 
@@ -40,7 +37,6 @@ class LinearReg:
 				x_j_i = x[i][j]
 				tmpj += self.getLoss(y_i, x_i) * x_j_i
 			tmp[j] += self.stepSize * tmpj / len(y)
-			#print "%d\t%f" % (j, tmp[j])
 		return tmp
 			
 	def updateWeight(self, deltaW):
@@ -53,9 +49,7 @@ def getAbs(l):
 	res = 0
 	for i in l:
 		res += i*i
-	t = math.sqrt(res)
-	#print l, t
-	return t
+	return math.sqrt(res)
 
 class LBFGS:
 
@@ -126,9 +120,7 @@ class LBFGS:
 
 
 def genRandomData(featureSize, sampleSize):
-	y = []
-	x = []
-	w = []
+	y, x, w = [], [], []
 	for i in xrange(featureSize):
 		w.append(random.random())
 	for i in xrange(sampleSize):
