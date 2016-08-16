@@ -18,12 +18,15 @@ def ndotj(n, j):
 def jaddj(a, b):
 	return [a[i]+b[i] for i in xrange(len(a))]
 
+def jminj(a, b):
+	return [a[i]-b[i] for i in xrange(len(a))]
+
 class LinearReg:
 
 	def __init__(self, size):
 		self.size = size
 		self.w = [0 for i in xrange(size)]
-		self.stepSize = 0.1
+		self.stepSize = 0.5
 
 	def getLoss(self, y, x):
 		return y - jdotj(self.w, x)
@@ -41,7 +44,10 @@ class LinearReg:
 		return tmp
 			
 	def updateWeight(self, deltaW):
-		self.w = jaddj(deltaW, self.w)
+		self.w = jaddj(self.w, deltaW)
+
+	def updateWeight2(self, w):
+		self.w = w
 
 def getAbs(l):
 	res = 0
@@ -51,7 +57,7 @@ def getAbs(l):
 	#print l, t
 	return t
 
-class GD:
+class LBFGS:
 
 	def __init__(self, loss, x, y, round):
 		self.stop = 0.0001
@@ -60,19 +66,61 @@ class GD:
 		self.loss = loss
 		self.x = x
 		self.y = y
+		self.h = []
+		self.m = 10
+		self.s = [] # si = xi - xi-1
+		self.t = [] # ti = gi - gi-1
+		self.H = 1
+		self.lastGrad = [0 for i in xrange(len(self.x[0]))]
+		self.grad = 0
 
 	def runARound(self):
-		deltaG = self.loss.getGradient(self.y, self.x)
-		self.loss.updateWeight(deltaG)
-		return deltaG
+		direction = self.getDirection(self.lastGrad)
+		thisw = jminj(self.loss.w, ndotj(0.1, direction))
+		s = jminj(thisw, self.loss.w)
+		self.loss.updateWeight2(thisw)
+		self.grad = self.loss.getGradient(self.y, self.x)
+		y = jminj(self.grad, self.lastGrad)
+		self.updateST(s, y)
+		self.H = jdotj(y, s) / jdotj(y, y)
+		self.lastGrad = self.grad
+		return self.grad
+
+	def updateST(self, s, t):
+		if len(self.s) >= self.m:
+			del self.s[0]
+			del self.t[0]
+		self.s.append(s)
+		self.t.append(t)
+			
+
+	def getDirection(self, q):
+		# two-loop
+		k = min(self.m, len(self.s))
+		s = self.s
+		t = self.t
+		alpha = [0 for i in xrange(k)]
+		rho = [0 for i in xrange(k)]
+		for i in range(k)[::-1]:
+			rho[i] = 1.0 / jdotj(s[i], t[i])
+			alpha[i] = rho[i] * jdotj(s[i], q)
+			q = jminj(q, ndotj(alpha[i], t[i]))
+		r = ndotj(self.H, q)
+		for i in xrange(k):
+			beta = rho[i] * jdotj(t[i], r)
+			r = jaddj(r, ndotj(alpha[i] - beta, s[i]))
+		return r
+
 
 	def learn(self):
-		deltaG = self.runARound()
-		while self.realRound < self.round and self.stop < getAbs(deltaG):
-			deltaG = self.runARound()
+		self.lastGrad = self.loss.getGradient(self.y, self.x)
+		while True:
+			grad = self.runARound()
 			self.realRound += 1
+			if self.realRound > self.round or self.stop > getAbs(grad):
+				break
 		if self.realRound < self.round:
-			print "Reach the gap: %f" % getAbs(deltaG)
+			print "Reach the gap: %f" % getAbs(grad)
 		else:
 			print "Run off round."
 
@@ -92,12 +140,12 @@ def genRandomData(featureSize, sampleSize):
 	return y,x,w
 
 def test():
-	featureSize = 2
-	sampleSize = 500
+	featureSize = 10
+	sampleSize = 1000
 	y, x, w = genRandomData(featureSize, sampleSize)
 	lg = LinearReg(featureSize)
-	gd = GD(lg, x, y, sampleSize)
-	gd.learn()
+	bfgs = LBFGS(lg, x, y, sampleSize)
+	bfgs.learn()
 	#print gd.loss.w, gd.realRound
 	allLoss = 0
 	for i, x_i in enumerate(x):
