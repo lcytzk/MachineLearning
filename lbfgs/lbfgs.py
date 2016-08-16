@@ -132,8 +132,8 @@ def genRandomData(featureSize, sampleSize):
 	return y,x,w
 
 def test():
-	featureSize = 10
-	sampleSize = 1000
+	featureSize = 100
+	sampleSize = 10000
 	y, x, w = genRandomData(featureSize, sampleSize)
 	lg = LinearReg(featureSize)
 	bfgs = LBFGS(lg, x, y, sampleSize)
