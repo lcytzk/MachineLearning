@@ -120,7 +120,7 @@ void LBFGS::learn() {
 		runARound();
 		++realRound;
         printf("Round: %d, gradNorm: %f\n", realRound, cblas_dnrm2(featureSize, thisGrad, 1));
-	} while (realRound > stopRound || cblas_dnrm2(featureSize, thisGrad, 1) > stopGrad);
+	} while (realRound < stopRound && cblas_dnrm2(featureSize, thisGrad, 1) > stopGrad);
 	if (realRound == stopRound) {
 		cout << "Reach max round." << endl;
 	} else {
