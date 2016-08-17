@@ -1,0 +1,183 @@
+#!/usr/bin/env python
+
+import math
+import random
+import time
+
+def jdotj(a, b):
+	res = 0
+	for i in xrange(len(a)):
+		res += a[i]*b[i] 
+	return res
+
+def ndotj(n, j):
+	return [n*i for i in j]
+
+def jaddj(a, b):
+	return [a[i]+b[i] for i in xrange(len(a))]
+
+def jminj(a, b):
+	return [a[i]-b[i] for i in xrange(len(a))]
+
+class LinearReg:
+
+	def __init__(self, size):
+		self.size = size
+		self.w = [0 for i in xrange(size)]
+		#self.stepSize = 0.5
+
+	def getLoss(self, y, x):
+		return y - jdotj(self.w, x)
+
+	def getGradient(self, y, x):
+		tmp = [0 for i in xrange(len(x[0]))]
+		for j in xrange(len(tmp)):
+			tmpj = 0
+			for i, y_i in enumerate(y):
+				x_i = x[i]
+				x_j_i = x[i][j]
+				tmpj += self.getLoss(y_i, x_i) * x_j_i
+			tmp[j] = tmpj / len(y)
+		return tmp
+			
+	def updateWeight(self, deltaW):
+		self.w = jaddj(self.w, deltaW)
+
+	def updateWeight2(self, w):
+		self.w = w
+
+def getAbs(l):
+	res = 0
+	for i in l:
+		res += i*i
+	return math.sqrt(res)
+
+class LBFGS:
+
+	def __init__(self, loss, x, y, round):
+		self.stop = 0.001
+		self.round = round
+		self.loss = loss
+		self.x = x
+		self.y = y
+		self.h = []
+		self.m = 10
+		self.s = [] # si = xi - xi-1
+		self.t = [] # ti = gi - gi-1
+		self.H = 1
+		self.lastGrad = [0 for i in xrange(len(self.x[0]))]
+		self.grad = 0
+		self.stepSize = 0.1
+
+	def runARound(self):
+		direction = self.getDirection(self.lastGrad)
+		thisw = jminj(self.loss.w, ndotj(self.stepSize, direction))
+		self.loss.updateWeight2(thisw)
+		#s = jminj(thisw, self.loss.w)
+		s = ndotj(0 - self.stepSize, direction)
+		self.grad = self.loss.getGradient(self.y, self.x)
+		y = jminj(self.grad, self.lastGrad)
+		self.updateST(s, y)
+		y_y = jdotj(y, y)
+		self.H = jdotj(y, s) / jdotj(y, y)
+		self.lastGrad = self.grad
+		return self.grad
+
+	def updateST(self, s, t):
+		if len(self.s) >= self.m:
+			del self.s[0]
+			del self.t[0]
+		self.s.append(s)
+		self.t.append(t)
+
+	def getDirection(self, q):
+		# two-loop
+		k = min(self.m, len(self.s))
+		s = self.s
+		t = self.t
+		alpha = [0 for i in xrange(k)]
+		rho = [0 for i in xrange(k)]
+		for i in range(k)[::-1]:
+			s_t = jdotj(s[i], t[i])
+			rho[i] = 1.0 / s_t
+			alpha[i] = rho[i] * jdotj(s[i], q)
+			q = jminj(q, ndotj(alpha[i], t[i]))
+		r = ndotj(self.H, q)
+		for i in xrange(k):
+			beta = rho[i] * jdotj(t[i], r)
+			r = jaddj(r, ndotj(alpha[i] - beta, s[i]))
+		return r
+
+
+	def learn(self):
+		self.lastGrad = self.loss.getGradient(self.y, self.x)
+		realRound = 1
+		while True:
+			grad = self.runARound()
+			realRound += 1
+			if realRound > self.round or self.stop > getAbs(grad):
+				break
+		#if realRound < self.round:
+		#	print "Reach the gap: %f" % getAbs(grad)
+		#	print "Run %d rounds." % realRound
+		#else:
+		#	print "Run off round."
+
+
+def genRandomData(featureSize, sampleSize):
+	y, x, w = [], [], []
+	for i in xrange(featureSize):
+		w.append(random.random())
+	for i in xrange(sampleSize):
+		tmp = []
+		for j in xrange(featureSize):
+			tmp.append(random.random())
+		x.append(tmp)
+		y.append(jdotj(tmp, w))
+	return y,x,w
+
+def runInOneTime(x, y, w, sampleSize, featureSize):
+	lg = LinearReg(featureSize)
+	bfgs = LBFGS(lg, x, y, sampleSize)
+	bfgs.learn()
+	allLoss = 0
+	for i, x_i in enumerate(x):
+		loss = lg.getLoss(y[i], x_i)
+		allLoss += loss
+	print "true model is\n%s" % (str(w))
+	print "my model is\n%s" % (lg.w)
+	print "avgLoss: %f" % (allLoss/sampleSize)
+
+def runOneByOne(x, y, w, sampleSize, featureSize):
+	lg = LinearReg(featureSize)
+	bfgs = LBFGS(lg, x, y, sampleSize)
+	#flag = 10.0
+	for i in xrange(sampleSize):
+		#bfgs.stop = max(flag, 0.001)
+		bfgs.x = [x[i]]
+		bfgs.y = [y[i]]
+		bfgs.learn()
+		#flag = flag / 10
+	allLoss = 0
+	for i, x_i in enumerate(x):
+		loss = lg.getLoss(y[i], x_i)
+		allLoss += loss
+	print "true model is\n%s" % (str(w))
+	print "my model is\n%s" % (lg.w)
+	print "avgLoss: %f" % (allLoss/sampleSize)
+
+def test():
+	featureSize = 40
+	sampleSize = 10000
+	y, x, w = genRandomData(featureSize, sampleSize)
+	start = time.clock()
+	#for i in range(10):
+	runOneByOne(x, y, w, sampleSize, featureSize)
+	end = time.clock()
+	print "run one by one use: %s" % (end - start)
+	#for i in range(10):
+	runInOneTime(x, y, w, sampleSize, featureSize)
+	print "run in one time use: %s" % (time.clock() - end)
+
+if __name__ == '__main__':
+	test()
