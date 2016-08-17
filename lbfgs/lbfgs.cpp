@@ -69,7 +69,7 @@ class LBFGS {
 		double* y;
 		double stop = 0.0001;
 		int stopRound;
-		double stopGrad;
+		float stopGrad;
 		Loss<DataType>& loss;
 		double* weight;
 		int featureSize;
@@ -93,9 +93,10 @@ class LBFGS {
 			memset(weight, 0, sizeof(double) * featureSize);
 			alpha = (double*) malloc(sizeof(double) * m);
 			rho = (double*) malloc(sizeof(double) * m);
-			s = new LoopArray<double*>(10);
-			t = new LoopArray<double*>(10);
+			s = new LoopArray<double*>(m);
+			t = new LoopArray<double*>(m);
 			stepSize = 0.1;
+			stopGrad = 0.001;
 		};
 		void learn();
 };
@@ -107,7 +108,7 @@ void LBFGS<DataType>::learn() {
 	do {
 		runARound();
 		++realRound;
-	} while (realRound < stopRound && abs(thisGrad) < stopGrad);
+	} while (realRound < stopRound && cblas_snrm2(featureSize, thisGrad, 1) < stopGrad);
 	if (realRound == stopRound) {
 		cout << "Reach max round." << endl;
 	} else {
@@ -118,24 +119,38 @@ void LBFGS<DataType>::learn() {
 template<typename DataType>
 void LBFGS<DataType>::runARound() {
     double* direction = getDirection(lastGrad);
-    double* thisWeight = weight - direction * stepSize;
+	//  thisWeight = weight - direction * stepSize;
+	cblas_daxpy(featureSize, 0 - stepSize, direction, 1, weight, 1);
+	// s = thisW - lastW = -direction * step
+	cblas_dscal(featureSize, 0 - stepSize, direction, 1);
+	double* grad = loss.getGradient(weight, x, y);
+	cblas_daxpy(featureSize, -1, lastGrad, 1, grad, 1);
+	cblas_dswap(featureSize, lastGrad, 1, grad, 1);
+	updateST(direction, lastGrad);
+	H = cblas_dddot(featureSize, lastGrad, 1, direction, 1) / cblas_dddot(featureSize, lastGrad, 1, lastGrad, 1);
 }
 
 template<typename DataType>
-double* LBFGS<DataType>::getDirection(double* q) {
+double* LBFGS<DataType>::getDirection(double* qq) {
 	// two loop
+	double* q = malloc(sizeof(double) * featureSize);
+	memcpy(q, qq, sizeof(double) * featureSize);
 	int k = math.min(m, s.size());
 	for (int i = k-1; i >= 0; --i) {
-		rho[i] = 1.0 / s[i] * t[i];
-		alpha[i] = s[i] * q * rho[i];
-		q = q - alpha[i] * t[i];
+		rho[i] = 1.0 / cblas_dddot(featureSize, s[i], 1, t[i], 1);
+		alpha[i] = cblas_dddot(featureSize, s[i], 1, q, 1) * rho[i];
+		// q = q - alpha[i] * t[i];
+		cblas_daxpy(featureSize, alpha[i], t[i], 1, q, 1);
 	}
-	double* r = H * q;
+	// q = H * q;
+	cblas_dscal(featureSize, H, q, 1);
 	for (int i = 0; i < k; ++i) {
-		double beta = rho[i] * t[i] * r;
-		r = r + (alpha[i] - beta) * s[i];
+		// double beta = rho[i] * t[i] * q;
+		double beta = rho[i] * cblas_dddot(featureSize, q, 1, t[i], 1);
+		// q = q + (alpha[i] - beta) * s[i];
+		cblas_daxpy(featureSize, alpha[i] - beta, s[i], 1, q, 1);
 	}
-	return r;
+	return q;
 }
 
 template<typename DataType>
