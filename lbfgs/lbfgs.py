@@ -23,7 +23,7 @@ class LinearReg:
 	def __init__(self, size):
 		self.size = size
 		self.w = [0 for i in xrange(size)]
-		self.stepSize = 0.5
+		#self.stepSize = 0.5
 
 	def getLoss(self, y, x):
 		return y - jdotj(self.w, x)
@@ -36,7 +36,7 @@ class LinearReg:
 				x_i = x[i]
 				x_j_i = x[i][j]
 				tmpj += self.getLoss(y_i, x_i) * x_j_i
-			tmp[j] = self.stepSize * tmpj / len(y)
+			tmp[j] = tmpj / len(y)
 		return tmp
 			
 	def updateWeight(self, deltaW):
@@ -71,8 +71,9 @@ class LBFGS:
 	def runARound(self):
 		direction = self.getDirection(self.lastGrad)
 		thisw = jminj(self.loss.w, ndotj(self.stepSize, direction))
-		s = jminj(thisw, self.loss.w)
 		self.loss.updateWeight2(thisw)
+		#s = jminj(thisw, self.loss.w)
+		s = ndotj(0 - self.stepSize, direction)
 		self.grad = self.loss.getGradient(self.y, self.x)
 		y = jminj(self.grad, self.lastGrad)
 		self.updateST(s, y)
