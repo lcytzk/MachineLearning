@@ -80,6 +80,7 @@ class LBFGS {
 		Loss& loss;
 		double* weight;
 		int featureSize;
+		int sampleSize;
 		double* lastGrad;
 		double* thisGrad;
 		double stepSize;
@@ -95,7 +96,7 @@ class LBFGS {
 		void updateST(double* _s, double* _t);
 		double* getDirection(double* q);
 	public:
-		LBFGS(Loss& _loss, double** _x, double* _y, int _featureSize): loss(_loss), x(_x), y(_y), featureSize(_featureSize) {
+		LBFGS(Loss& _loss, double** _x, double* _y, int _featureSize, int _sampleSize): loss(_loss), x(_x), y(_y), featureSize(_featureSize), sampleSize(_sampleSize) {
             m = 10;
 			weight = (double*) malloc(sizeof(double) * featureSize);
 			memset(weight, 0, sizeof(double) * featureSize);
@@ -111,7 +112,7 @@ class LBFGS {
 
 void LBFGS::learn() {
 	int realRound = 0;
-	lastGrad = loss.getGradient(weight, x, y);
+	lastGrad = loss.getGradient(weight, x, y, featureSize, sampleSize);
 	do {
 		runARound();
 		++realRound;
@@ -129,7 +130,7 @@ void LBFGS::runARound() {
 	cblas_daxpy(featureSize, 0 - stepSize, direction, 1, weight, 1);
 	// s = thisW - lastW = -direction * step
 	cblas_dscal(featureSize, 0 - stepSize, direction, 1);
-	double* grad = loss.getGradient(weight, x, y);
+	double* grad = loss.getGradient(weight, x, y, featureSize, sampleSize);
 	cblas_daxpy(featureSize, -1, lastGrad, 1, grad, 1);
 	cblas_dswap(featureSize, lastGrad, 1, grad, 1);
 	updateST(direction, lastGrad);
