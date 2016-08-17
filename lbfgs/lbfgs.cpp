@@ -42,24 +42,32 @@ class LoopArray {
 
 class Loss {
 	public:
-		virtual double getLoss(double* w, double* _x, double _y) = 0;
-		virtual double* getGradient(double* w, double** _x, double* _y) = 0;
+		virtual double getLoss(double* w, double* _x, double _y, int featureSize) = 0;
+		virtual double* getGradient(double* w, double** _x, double* _y, int featureSize, int sampleSize) = 0;
 };
 
 class LinearLoss : public Loss {
     public:
-        double getLoss(double* w, double* _x, double _y);
-        double* getGradient(double* w, double** _x, double* _y);
+        double getLoss(double* w, double* _x, double _y, int featureSize);
+        double* getGradient(double* w, double** _x, double* _y, int featureSize, int sampleSize);
 };
 
 
-double LinearLoss::getLoss(double* w, double* _x, double _y) {
-	return 0.1;
+double LinearLoss::getLoss(double* w, double* _x, double _y, int featureSize) {
+	return _y - cblas_ddot(featureSize, w, 1, _x, 1);
 }
 
-double* LinearLoss::getGradient(double* w, double** _x, double* _y) {
-    double* t = (double*) malloc(100);
-    return t;
+double* LinearLoss::getGradient(double* w, double** _x, double* _y, int featureSize, int sampleSize) {
+	double* t = (double*) malloc(sizeof(double) * featureSize);
+	memcpy(t, _y, sizeof(double) * featureSize);
+	for (int i = 0; i < featureSize; ++i) {
+		double tmp = 0;
+		for (int j = 0; j < sampleSize; ++j) {
+			tmp += getLoss(w, _x[j], _y[j], featureSize) * _x[j][i];
+		}
+		t[i] = tmp / sampleSize;
+	}
+	return t;
 }
 
 class LBFGS {

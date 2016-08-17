@@ -36,7 +36,7 @@ class LinearReg:
 				x_i = x[i]
 				x_j_i = x[i][j]
 				tmpj += self.getLoss(y_i, x_i) * x_j_i
-			tmp[j] += self.stepSize * tmpj / len(y)
+			tmp[j] = self.stepSize * tmpj / len(y)
 		return tmp
 			
 	def updateWeight(self, deltaW):
@@ -56,7 +56,6 @@ class LBFGS:
 	def __init__(self, loss, x, y, round):
 		self.stop = 0.0001
 		self.round = round
-		self.realRound = 1
 		self.loss = loss
 		self.x = x
 		self.y = y
@@ -67,10 +66,11 @@ class LBFGS:
 		self.H = 1
 		self.lastGrad = [0 for i in xrange(len(self.x[0]))]
 		self.grad = 0
+		self.stepSize = 0.1
 
 	def runARound(self):
 		direction = self.getDirection(self.lastGrad)
-		thisw = jminj(self.loss.w, ndotj(0.1, direction))
+		thisw = jminj(self.loss.w, ndotj(self.stepSize, direction))
 		s = jminj(thisw, self.loss.w)
 		self.loss.updateWeight2(thisw)
 		self.grad = self.loss.getGradient(self.y, self.x)
@@ -86,7 +86,6 @@ class LBFGS:
 			del self.t[0]
 		self.s.append(s)
 		self.t.append(t)
-			
 
 	def getDirection(self, q):
 		# two-loop
@@ -108,13 +107,15 @@ class LBFGS:
 
 	def learn(self):
 		self.lastGrad = self.loss.getGradient(self.y, self.x)
+		realRound = 1
 		while True:
 			grad = self.runARound()
-			self.realRound += 1
-			if self.realRound > self.round or self.stop > getAbs(grad):
+			realRound += 1
+			if realRound > self.round or self.stop > getAbs(grad):
 				break
-		if self.realRound < self.round:
+		if realRound < self.round:
 			print "Reach the gap: %f" % getAbs(grad)
+			print "Run %d rounds." % realRound
 		else:
 			print "Run off round."
 
@@ -132,8 +133,8 @@ def genRandomData(featureSize, sampleSize):
 	return y,x,w
 
 def test():
-	featureSize = 100
-	sampleSize = 10000
+	featureSize = 10
+	sampleSize = 1000
 	y, x, w = genRandomData(featureSize, sampleSize)
 	lg = LinearReg(featureSize)
 	bfgs = LBFGS(lg, x, y, sampleSize)
