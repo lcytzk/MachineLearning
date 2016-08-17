@@ -59,7 +59,7 @@ double LinearLoss::getLoss(double* w, double* _x, double _y, int featureSize) {
 
 double* LinearLoss::getGradient(double* w, double** _x, double* _y, int featureSize, int sampleSize) {
 	double* t = (double*) malloc(sizeof(double) * featureSize);
-	memcpy(t, _y, sizeof(double) * featureSize);
+	//memcpy(t, _y, sizeof(double) * featureSize);
 	for (int i = 0; i < featureSize; ++i) {
 		double tmp = 0;
 		for (int j = 0; j < sampleSize; ++j) {
@@ -78,7 +78,6 @@ class LBFGS {
 		int stopRound;
 		float stopGrad;
 		Loss& loss;
-		double* weight;
 		int featureSize;
 		int sampleSize;
 		double* lastGrad;
@@ -103,26 +102,30 @@ class LBFGS {
 			alpha = (double*) malloc(sizeof(double) * m);
 			rho = (double*) malloc(sizeof(double) * m);
 			thisGrad = (double*) malloc(sizeof(double) * featureSize);
-			lastGrad = (double*) malloc(sizeof(double) * featureSize);
+	        lastGrad = loss.getGradient(weight, x, y, featureSize, sampleSize);
+			//lastGrad = (double*) malloc(sizeof(double) * featureSize);
 			s = new LoopArray(m);
 			t = new LoopArray(m);
 			stepSize = 0.1;
 			stopGrad = 0.001;
+            stopRound = sampleSize;
 		};
 		void learn();
+		double* weight;
 };
 
 void LBFGS::learn() {
 	int realRound = 0;
-	lastGrad = loss.getGradient(weight, x, y, featureSize, sampleSize);
 	do {
 		runARound();
 		++realRound;
-	} while (realRound < stopRound && cblas_dnrm2(featureSize, thisGrad, 1) < stopGrad);
+        printf("Round: %d, gradNorm: %f\n", realRound, cblas_dnrm2(featureSize, thisGrad, 1));
+	} while (realRound > stopRound || cblas_dnrm2(featureSize, thisGrad, 1) > stopGrad);
 	if (realRound == stopRound) {
 		cout << "Reach max round." << endl;
 	} else {
-		printf("Reach the gap: %lf", cblas_dnrm2(featureSize, thisGrad, 1));
+		printf("Reach the gap: %f\n", cblas_dnrm2(featureSize, thisGrad, 1));
+		printf("Run %d rounds.\n", realRound);
 	}
 }
 
@@ -172,7 +175,7 @@ void LBFGS::updateST(double* _s, double* _t) {
 }
 
 
-void generateData(double** x, double* y, double* weight, int featureSize, int sampleSize) {
+void generateData(double** &x, double* &y, double* &weight, int featureSize, int sampleSize) {
     y = (double*) malloc(sizeof(double) * sampleSize);
     x = (double**) malloc(sizeof(double*) * sampleSize);
     weight = (double*) malloc(sizeof(double) * featureSize);
@@ -190,6 +193,13 @@ void generateData(double** x, double* y, double* weight, int featureSize, int sa
     }
 }
 
+void outputModel(double* model, int size) {
+    for(int i = 0; i < size; ++i) {
+        printf("%f\t", model[i]);
+    }
+    printf("\n");
+}
+
 int main() {
     double** x;
     double* y;
@@ -197,8 +207,19 @@ int main() {
     int featureSize = 10;
     int sampleSize = 100;
     generateData(x, y, weight, featureSize, sampleSize);
+    cout << "init data done." << endl;
     LinearLoss ll;
 	LBFGS lbfgs(ll, x, y, featureSize, sampleSize);
+    cout << "begin learn" << endl;
 	lbfgs.learn();
+    cout << "true model is: " << endl;
+    outputModel(weight, featureSize);
+    cout << "my model is: " << endl;
+    outputModel(lbfgs.weight, featureSize);
+    double allLoss = 0;
+    for(int i = 0; i < sampleSize; ++i) {
+        allLoss = ll.getLoss(lbfgs.weight, x[i], y[i], featureSize);
+    }
+    cout << "avg loss: " << allLoss / sampleSize << endl;
 	return 0;
 }
