@@ -32,7 +32,7 @@ class LinearReg:
 	def getGradient(self, y, x):
 		tmp = [0 for i in xrange(len(x))]
 		for j in xrange(len(tmp)):
-			tmp[j] += self.stepSize * self.getLoss(y, x) * x[j] / len(x)
+			tmp[j] += self.getLoss(y, x) * x[j] / len(x)
 		return tmp
 			
 	def updateWeight(self, deltaW):
@@ -133,9 +133,10 @@ def test():
 	y, x, w = genRandomData(featureSize, sampleSize)
 	start = time.clock()
 	#for i in range(10):
-	#runOneByOne(x, y, w, sampleSize, featureSize)
-	#end = time.clock()
-	#print "run one by one use: %s" % (end - start)
+	runOneByOne(x, y, w, sampleSize, featureSize)
+	end = time.clock()
+	print "run one by one use: %s" % (end - start)
+	start = end
 	#for i in range(10):
 	runInOneTime(x, y, w, sampleSize, featureSize)
 	print "run in one time use: %s" % (time.clock() - start)
