@@ -74,14 +74,12 @@ class LBFGS {
 	private:
 		double** x;
 		double* y;
-		double stop = 0.0001;
 		int stopRound;
 		float stopGrad;
 		Loss& loss;
 		int featureSize;
 		int sampleSize;
 		double* lastGrad;
-		double* thisGrad;
 		double stepSize;
 		int m;
 		double* alpha;
@@ -101,7 +99,6 @@ class LBFGS {
 			memset(weight, 0, sizeof(double) * featureSize);
 			alpha = (double*) malloc(sizeof(double) * m);
 			rho = (double*) malloc(sizeof(double) * m);
-			thisGrad = (double*) malloc(sizeof(double) * featureSize);
 	        lastGrad = loss.getGradient(weight, x, y, featureSize, sampleSize);
 			//lastGrad = (double*) malloc(sizeof(double) * featureSize);
 			s = new LoopArray(m);
@@ -119,29 +116,27 @@ void LBFGS::learn() {
 	do {
 		runARound();
 		++realRound;
-        printf("Round: %d, gradNorm: %f\n", realRound, cblas_dnrm2(featureSize, thisGrad, 1));
-	} while (realRound < stopRound && cblas_dnrm2(featureSize, thisGrad, 1) > stopGrad);
+	} while (realRound < stopRound && cblas_dnrm2(featureSize, lastGrad, 1) > stopGrad);
 	if (realRound == stopRound) {
 		cout << "Reach max round." << endl;
 	} else {
-		printf("Reach the gap: %f\n", cblas_dnrm2(featureSize, thisGrad, 1));
+		printf("Reach the gap: %f\n", cblas_dnrm2(featureSize, lastGrad, 1));
 		printf("Run %d rounds.\n", realRound);
 	}
 }
 
 void LBFGS::runARound() {
     double* direction = getDirection(lastGrad);
-	//  thisWeight = weight - direction * stepSize;
+	//  weight = weight - direction * stepSize;
 	cblas_daxpy(featureSize, 0 - stepSize, direction, 1, weight, 1); // weight will be updated here.
 	// s = thisW - lastW = -direction * step
 	cblas_dscal(featureSize, 0 - stepSize, direction, 1); // direction will be s.
 	double* s = direction;
 	double* grad = loss.getGradient(weight, x, y, featureSize, sampleSize);
-	// lastGrad = thisGrad, thisGrad = grad
-	memcpy(lastGrad, thisGrad, sizeof(double) * featureSize);
-	memcpy(thisGrad, grad, sizeof(double) * featureSize);
+	// grad = grad - lastGrad, lastGrad = lastGrad + grad
+	cblas_daxpy(featureSize, -1, lastGrad, 1, grad, 1);
+	cblas_daxpy(featureSize, 1, grad, 1, lastGrad, 1);
 	// grad = grad - lastGrad grad will be y
-	cblas_daxpy(featureSize, -1, thisGrad, 1, grad, 1);
 	double* y = grad;
 	updateST(s, y);
 	H = cblas_ddot(featureSize, y, 1, s, 1) / cblas_ddot(featureSize, y, 1, y, 1);
@@ -156,7 +151,7 @@ double* LBFGS::getDirection(double* qq) {
 		rho[i] = 1.0 / cblas_ddot(featureSize, (*s)[i], 1, (*t)[i], 1);
 		alpha[i] = cblas_ddot(featureSize, (*s)[i], 1, q, 1) * rho[i];
 		// q = q - alpha[i] * t[i];
-		cblas_daxpy(featureSize, alpha[i], (*t)[i], 1, q, 1);
+		cblas_daxpy(featureSize, (0 - alpha[i]), (*t)[i], 1, q, 1);
 	}
 	// q = H * q;
 	cblas_dscal(featureSize, H, q, 1);
@@ -205,12 +200,12 @@ int main() {
     double* y;
     double* weight;
     int featureSize = 10;
-    int sampleSize = 100;
+    int sampleSize = 1000;
     generateData(x, y, weight, featureSize, sampleSize);
-    cout << "init data done." << endl;
+//    cout << "init data done." << endl;
     LinearLoss ll;
 	LBFGS lbfgs(ll, x, y, featureSize, sampleSize);
-    cout << "begin learn" << endl;
+//    cout << "begin learn" << endl;
 	lbfgs.learn();
     cout << "true model is: " << endl;
     outputModel(weight, featureSize);
@@ -218,7 +213,7 @@ int main() {
     outputModel(lbfgs.weight, featureSize);
     double allLoss = 0;
     for(int i = 0; i < sampleSize; ++i) {
-        allLoss = ll.getLoss(lbfgs.weight, x[i], y[i], featureSize);
+        allLoss += ll.getLoss(lbfgs.weight, x[i], y[i], featureSize);
     }
     cout << "avg loss: " << allLoss / sampleSize << endl;
 	return 0;
