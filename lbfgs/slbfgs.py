@@ -144,18 +144,21 @@ class LBFGS2:
 		self.gradNorm = 1
 
 	def runARound(self):
-		direction = self.getDirection(self.lastGrad)
-		thisw = jminj(self.loss.w, ndotj(self.stepSize, direction))
-		self.loss.updateWeight2(thisw)
-		#s = jminj(thisw, self.loss.w)
-		s = ndotj(0 - self.stepSize, direction)
-		self.grad = self.loss.getGradient(self.y, self.x)
-		y = jminj(self.grad, self.lastGrad)
-		self.updateST(s, y)
-		y_y = jdotj(y, y)
-		self.H = jdotj(y, s) / jdotj(y, y)
+		try:
+			direction = self.getDirection(self.lastGrad)
+			thisw = jminj(self.loss.w, ndotj(self.stepSize, direction))
+			self.loss.updateWeight2(thisw)
+			#s = jminj(thisw, self.loss.w)
+			s = ndotj(0 - self.stepSize, direction)
+			self.grad = self.loss.getGradient(self.y, self.x)
+			y = jminj(self.grad, self.lastGrad)
+			self.updateST(s, y)
+			y_y = jdotj(y, y)
+			self.H = jdotj(y, s) / jdotj(y, y)
+		except:
+			return False
 		self.lastGrad = self.grad
-		return self.grad
+		return True
 
 	def updateST(self, s, t):
 		if len(self.s) >= self.m:
@@ -182,7 +185,9 @@ class LBFGS2:
 
 	def learn(self):
 		self.lastGrad = self.loss.getGradient(self.y, self.x)
-		self.lastGrad = self.runARound()
+		if getAbs(self.lastGrad) < self.stop:
+			return False
+		return self.runARound()
 
 def genRandomData(featureSize, sampleSize):
 	y, x, w = [], [], []
@@ -229,7 +234,8 @@ def runOneByOne2(x, y, w, sampleSize, featureSize):
 	for i in xrange(sampleSize):
 		bfgs.x = [x[i]]
 		bfgs.y = [y[i]]
-		bfgs.learn()
+		if not bfgs.learn():
+			break
 	allLoss = 0
 	for i, x_i in enumerate(x):
 		loss = lg.getLoss(y[i], x_i)
@@ -239,15 +245,15 @@ def runOneByOne2(x, y, w, sampleSize, featureSize):
 	print "avgLoss: %f" % (allLoss/sampleSize)
 
 def test():
-	featureSize = 400
-	sampleSize = 20000
+	featureSize = 20
+	sampleSize = 100000
 	y, x, w = genRandomData(featureSize, sampleSize)
 	start = time.clock()
 	#for i in range(10):
-	runOneByOne(x, y, w, sampleSize, featureSize)
-	end = time.clock()
-	print "#1# run one by one use: %s" % (end - start)
-	start = end
+	#runOneByOne(x, y, w, sampleSize, featureSize)
+	#end = time.clock()
+	#print "#1# run one by one use: %s" % (end - start)
+	#start = end
 	runOneByOne2(x, y, w, sampleSize, featureSize)
 	end = time.clock()
 	print "#2# run one by one use: %s" % (end - start)
