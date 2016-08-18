@@ -4,12 +4,20 @@
 #include <iostream>
 #include <stdlib.h>
 #include <time.h>
+#include <math.h>
 
 extern "C" {
     #include <cblas.h>
 }
 
 using namespace std;
+
+void outputModel(double* model, int size) {
+    for(int i = 0; i < size; ++i) {
+        printf("%f\t", model[i]);
+    }
+    printf("\n");
+}
 
 class LoopArray {
 	private:
@@ -42,21 +50,27 @@ class LoopArray {
 
 class Loss {
 	public:
+        virtual double getVal(double* w, double* _x, int featureSize) = 0;
 		virtual double getLoss(double* w, double* _x, double _y, int featureSize) = 0;
 		virtual double* getGradient(double* w, double** _x, double* _y, int featureSize, int sampleSize) = 0;
 };
 
-class LinearLoss : public Loss {
+class LogLoss : public Loss {
     public:
+        double getVal(double* w, double* _x, int featureSize);
         double getLoss(double* w, double* _x, double _y, int featureSize);
         double* getGradient(double* w, double** _x, double* _y, int featureSize, int sampleSize);
 };
 
-double LinearLoss::getLoss(double* w, double* _x, double _y, int featureSize) {
-	return _y - cblas_ddot(featureSize, w, 1, _x, 1);
+double LogLoss::getVal(double* w, double* _x, int featureSize) {
+	return 1.0 / (1.0 + exp(0 - cblas_ddot(featureSize, w, 1, _x, 1))) > 0.5 ? 1 : 0;
 }
 
-double* LinearLoss::getGradient(double* w, double** _x, double* _y, int featureSize, int sampleSize) {
+double LogLoss::getLoss(double* w, double* _x, double _y, int featureSize) {
+	return _y - 1.0 / (1.0 + exp(0 - cblas_ddot(featureSize, w, 1, _x, 1)));
+}
+
+double* LogLoss::getGradient(double* w, double** _x, double* _y, int featureSize, int sampleSize) {
 	double* t = (double*) malloc(sizeof(double) * featureSize);
 	for (int i = 0; i < featureSize; ++i) {
 		double tmp = 0;
@@ -68,10 +82,8 @@ double* LinearLoss::getGradient(double* w, double** _x, double* _y, int featureS
 	return t;
 }
 
-class LBFGS {
+class SLBFGS {
 	private:
-		double** x;
-		double* y;
 		int stopRound;
 		float stopGrad;
 		Loss& loss;
@@ -91,7 +103,10 @@ class LBFGS {
 		void updateST(double* _s, double* _t);
 		double* getDirection(double* q);
 	public:
-		LBFGS(Loss& _loss, double** _x, double* _y, int _featureSize, int _sampleSize): loss(_loss), x(_x), y(_y), featureSize(_featureSize), sampleSize(_sampleSize) {
+		double* weight;
+		double** x;
+		double* y;
+		SLBFGS(Loss& _loss, double** _x, double* _y, int _featureSize, int _sampleSize): loss(_loss), x(_x), y(_y), featureSize(_featureSize), sampleSize(_sampleSize) {
             m = 10;
 			weight = (double*) malloc(sizeof(double) * featureSize);
 			memset(weight, 0, sizeof(double) * featureSize);
@@ -102,28 +117,24 @@ class LBFGS {
 			s = new LoopArray(m);
 			t = new LoopArray(m);
 			stepSize = 0.1;
-			stopGrad = 0.001;
+			stopGrad = 0.000001;
             stopRound = sampleSize;
 		};
-		void learn();
-		double* weight;
+		bool learn();
 };
 
-void LBFGS::learn() {
-	int realRound = 0;
-	do {
-		runARound();
-		++realRound;
-	} while (realRound < stopRound && cblas_dnrm2(featureSize, lastGrad, 1) > stopGrad);
-	if (realRound == stopRound) {
-		cout << "Reach max round." << endl;
-	} else {
-		printf("Reach the gap: %f\n", cblas_dnrm2(featureSize, lastGrad, 1));
-		printf("Run %d rounds.\n", realRound);
-	}
+bool SLBFGS::learn() {
+    free(lastGrad);
+    lastGrad = loss.getGradient(weight, x, y, featureSize, sampleSize);
+    runARound();
+    if(cblas_dnrm2(featureSize, lastGrad, 1) < stopGrad) {
+        cout << "Reach the gap" << endl;
+        return false;
+    }
+    return true;
 }
 
-void LBFGS::runARound() {
+void SLBFGS::runARound() {
     double* direction = getDirection(lastGrad);
 	//  weight = weight - direction * stepSize;
 	cblas_daxpy(featureSize, 0 - stepSize, direction, 1, weight, 1); // weight will be updated here.
@@ -140,7 +151,7 @@ void LBFGS::runARound() {
 	H = cblas_ddot(featureSize, y, 1, s, 1) / cblas_ddot(featureSize, y, 1, y, 1);
 }
 
-double* LBFGS::getDirection(double* qq) {
+double* SLBFGS::getDirection(double* qq) {
 	// two loop
 	double* q = (double*) malloc(sizeof(double) * featureSize);
 	memcpy(q, qq, sizeof(double) * featureSize);
@@ -162,7 +173,7 @@ double* LBFGS::getDirection(double* qq) {
 	return q;
 }
 
-void LBFGS::updateST(double* _s, double* _t) {
+void SLBFGS::updateST(double* _s, double* _t) {
 	s->appendAndRemoveFirstIfFull(_s);
 	t->appendAndRemoveFirstIfFull(_t);
 }
@@ -186,35 +197,70 @@ void generateData(double** &x, double* &y, double* &weight, int featureSize, int
     }
 }
 
-void outputModel(double* model, int size) {
-    for(int i = 0; i < size; ++i) {
-        printf("%f\t", model[i]);
+void generateData2(double** &x, double* &y, double* &weight, int featureSize, int sampleSize) {
+    y = (double*) malloc(sizeof(double) * sampleSize);
+    x = (double**) malloc(sizeof(double*) * sampleSize);
+    weight = (double*) malloc(sizeof(double) * featureSize);
+    srand(time(NULL));
+    for(int i = 0; i < featureSize; ++i) {
+        weight[i] = 1.0;
     }
-    printf("\n");
+    for(int i = 0; i < sampleSize; ++i) {
+        double* _x = (double*) malloc(sizeof(double) * featureSize);
+        for(int j = 0; j < featureSize; ++j) {
+            _x[j] = (double) rand() / RAND_MAX > 0.5 ? 1.0 : 0;
+        }
+        x[i] = _x;
+        y[i] = cblas_ddot(featureSize, _x, 1, weight, 1) > 0.5 ? 1.0 : 0;
+    }
 }
 
-int main(int argc, char* argv[]) {
+void test(int featureSize, int sampleSize) {
     double** x;
     double* y;
     double* weight;
-//    int featureSize = 100;
-//    int sampleSize = 100000;
-    int featureSize = atoi(argv[1]);
-    int sampleSize = atoi(argv[2]);
-    generateData(x, y, weight, featureSize, sampleSize);
-//    cout << "init data done." << endl;
-    LinearLoss ll;
-	LBFGS lbfgs(ll, x, y, featureSize, sampleSize);
-//    cout << "begin learn" << endl;
-	lbfgs.learn();
+    generateData2(x, y, weight, featureSize, sampleSize);
+//    outputModel(y, sampleSize);
+    cout << "init data done." << endl;
+    cout << "begin learn" << endl;
+    double** xx = (double**) malloc(sizeof(double**));
+    double* yy = (double*) malloc(sizeof(double*));
+    xx[0] = x[0];
+    yy[0] = y[0];
+    LogLoss ll;
+	SLBFGS slbfgs(ll, xx, yy, featureSize, 1);
+    bool flag = false;
+    while(1){
+        for(int i = 0; i < sampleSize; ++i) {
+            xx[0] = x[i];
+            yy[0] = y[i];
+	        if(!slbfgs.learn()) {
+                flag = true;
+                break;
+            }
+        }
+        if(flag) break;
+    }
 //    cout << "true model is: " << endl;
 //    outputModel(weight, featureSize);
 //    cout << "my model is: " << endl;
-//    outputModel(lbfgs.weight, featureSize);
+//    outputModel(slbfgs.weight, featureSize);
     double allLoss = 0;
+    int count = 0;
     for(int i = 0; i < sampleSize; ++i) {
-        allLoss += ll.getLoss(lbfgs.weight, x[i], y[i], featureSize);
+        allLoss += ll.getLoss(slbfgs.weight, x[i], y[i], featureSize);
+        if(ll.getVal(slbfgs.weight, x[i], featureSize) == y[i]) {
+            ++count;
+        }
     }
     cout << "avg loss: " << allLoss / sampleSize << endl;
+    cout << "count percent: " << ((double) count) / sampleSize << endl;
+    cout << "count: " << count << endl;
+}
+
+int main(int argc, char* argv[]) {
+    int featureSize = atoi(argv[1]);
+    int sampleSize = atoi(argv[2]);
+    test(featureSize, sampleSize);
 	return 0;
 }
