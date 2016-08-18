@@ -116,7 +116,7 @@ class LBFGS {
 			s = new LoopArray(m);
 			t = new LoopArray(m);
 			stepSize = 0.1;
-			stopGrad = 0.001;
+			stopGrad = 0.00001;
             stopRound = sampleSize;
 		};
 		void learn();
@@ -211,10 +211,10 @@ void generateData2(double** &x, double* &y, double* &weight, int featureSize, in
     for(int i = 0; i < sampleSize; ++i) {
         double* _x = (double*) malloc(sizeof(double) * featureSize);
         for(int j = 0; j < featureSize; ++j) {
-            _x[j] = (double) rand() / RAND_MAX > 0.5 ? 1.0 : 0;
+            _x[j] = ((double) rand() / RAND_MAX) > 0.5 ? 1.0 : 0;
         }
         x[i] = _x;
-        y[i] = cblas_ddot(featureSize, _x, 1, weight, 1) > 0.5 ? 1.0 : 0;
+        y[i] = cblas_ddot(featureSize, _x, 1, weight, 1) > 17 ? 1.0 : 0;
     }
 }
 
@@ -237,15 +237,19 @@ void test() {
     outputModel(lbfgs.weight, featureSize);
     double allLoss = 0;
     int count = 0;
+    double val = 0;
     for(int i = 0; i < sampleSize; ++i) {
         allLoss += ll.getLoss(lbfgs.weight, x[i], y[i], featureSize);
-        if(ll.getVal(lbfgs.weight, x[i], featureSize) == y[i]) {
+        double val2 = ll.getVal(lbfgs.weight, x[i], featureSize);
+        val += val2;
+        if(val2 == y[i]) {
             ++count;
         }
     }
     cout << "avg loss: " << allLoss / sampleSize << endl;
     cout << "count percent: " << ((double) count) / sampleSize << endl;
     cout << "count: " << count << endl;
+    cout << "val sum: " << val << endl;
 }
 
 void test2() {

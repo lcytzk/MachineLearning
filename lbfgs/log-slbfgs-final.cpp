@@ -5,6 +5,9 @@
 #include <stdlib.h>
 #include <time.h>
 #include <math.h>
+#include <fstream>
+#include <string>
+#include <map>
 
 extern "C" {
     #include <cblas.h>
@@ -46,6 +49,9 @@ class LoopArray {
 		int size() {
 			return realSize;
 		}
+        ~LoopArray() {
+            free(array);
+        }
 };
 
 class Loss {
@@ -230,65 +236,91 @@ void splitString(const std::string& s, std::vector<std::string>& v, const std::s
     v.push_back(s.substr(pos1));
 }
 
-int getIndex(string item, map<string, int> table) {
+map<string,int> table;
+
+int getIndex(string item) {
     map<string, int>::iterator it = table.find(item);
     if (it == table.end()) {
         table.insert(pair<string, int>(item, table.size() + 1));
+    } else {
+        return it->second;
     }
     return table.size();
 }
 
-void getNextXY(double* x, double* y, ifstream fo) {
+bool getNextXY(double* x, double* y, ifstream& fo) {
+    if(fo.eof()) {
+        cout << "reach the file end." << endl;
+        return false;
+    }
     string str;
-    vector<string> v(200);
+    vector<string> v;
     getline(fo, str);
     splitString(str, v, "\t");
-    y[0] = atof(v[0]);
-    for(auto item : v) {
-        x[getIndex(item)] = 1.0;
+    y[0] = atof(v[0].c_str());
+    for(int i = 1; i < v.size(); ++i) {
+        x[getIndex(v[i])] = 1.0;
     }
+    return true;
+}
+
+void outputAcu(SLBFGS& slbfgs, int featureSize, double** xx, double* yy, LogLoss& ll, ifstream& fo) {
+    fo.open("/root/liangchenye/mine/MachineLearning/lbfgs/in2-2.txt");
+    string str;
+    getline(fo, str);
+    double allLoss = 0;
+    int count = 0;
+    int sampleSize = 0;
+    while (getNextXY(xx[0], yy, fo)) {
+        allLoss += ll.getLoss(slbfgs.weight, xx[0], yy[0], featureSize);
+        double val = ll.getVal(slbfgs.weight, xx[0], featureSize);
+        if(val == yy[0]) {
+            ++count;
+        }
+        ++sampleSize;
+    }
+    fo.close();
+    cout << "avg loss: " << allLoss / sampleSize << endl;
+    cout << "count percent: " << ((double) count) / sampleSize << endl;
+    cout << "count: " << count << endl;
+    cout << "sampleSize: " << sampleSize << endl;
 }
 
 void test(int featureSize, ifstream& fo) {
     double* weight;
-    cout << "init data done." << endl;
+    cout << "feature size is: " << featureSize << endl;
     cout << "begin learn" << endl;
-    double** xx = (double**) malloc(sizeof(double**));
-    xx[0] = (double*) malloc(sizeof(double*) * featureSize);
-    double* yy = (double*) malloc(sizeof(double*));
-    getNextXY(xx[0], yy);
+    double** xx = (double**) malloc(sizeof(double*));
+    xx[0] = (double*) malloc(sizeof(double) * featureSize);
+    double* yy = (double*) malloc(sizeof(double));
+    getNextXY(xx[0], yy, fo);
     LogLoss ll;
 	SLBFGS slbfgs(ll, xx, yy, featureSize, 1);
     bool flag = false;
-    while(1){
-        for(int i = 0; i < sampleSize; ++i) {
-            xx[0] = x[i];
-            yy[0] = y[i];
-	        if(!slbfgs.learn()) {
-                flag = true;
-                break;
-            }
+    cout << "begin loop" << endl;
+    int loop = 0;
+    while (getNextXY(xx[0], yy, fo)) {
+	    if(!slbfgs.learn()) {
+            break;
         }
-        if(flag) break;
+//        cout << loop++ << endl;
     }
-    double allLoss = 0;
-    int count = 0;
-    for(int i = 0; i < sampleSize; ++i) {
-        allLoss += ll.getLoss(slbfgs.weight, x[i], y[i], featureSize);
-        if(ll.getVal(slbfgs.weight, x[i], featureSize) == y[i]) {
-            ++count;
-        }
-    }
-    cout << "avg loss: " << allLoss / sampleSize << endl;
-    cout << "count percent: " << ((double) count) / sampleSize << endl;
-    cout << "count: " << count << endl;
+    fo.close();
+    cout << "learn finish." << endl;
+    outputAcu(slbfgs, featureSize, xx, yy, ll, fo);
+//    cout << "free xx[0]" << endl;
+//    free(xx[0]);
+//    cout << "free xx" << endl;
+//    free(xx);
+//    cout << "free yy" << endl;
+//    free(yy);
 }
 
 int loadData(ifstream& fo) {
-    fo.open("/root/liangchenye/MLtest/in2-2.txt");
+    fo.open("/root/liangchenye/mine/MachineLearning/lbfgs/in2-2.txt");
     string str;
-    getline(fo, str)
-    int featureSize = atoi(str);
+    getline(fo, str);
+    int featureSize = atoi(str.c_str());
     return featureSize;
 }
 
@@ -296,5 +328,7 @@ int main(int argc, char* argv[]) {
     ifstream fo;
     int featureSize = loadData(fo);
     test(featureSize, fo);
+    fo.close();
+    cout << "finish program." << endl;
 	return 0;
 }
