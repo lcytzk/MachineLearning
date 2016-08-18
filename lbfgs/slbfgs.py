@@ -73,6 +73,80 @@ class LBFGS:
 		direction = self.getDirection(self.lastGrad)
 		thisw = jminj(self.loss.w, ndotj(self.stepSize, direction))
 		self.loss.updateWeight2(thisw)
+		s = ndotj(0 - self.stepSize, direction)
+		self.grad = self.loss.getGradient(self.y, self.x)
+		y = jminj(self.grad, self.lastGrad)
+		self.updateST(s, y)
+		y_y = jdotj(y, y)
+		self.H = jdotj(y, s) / jdotj(y, y)
+		self.lastGrad = self.grad
+		return self.grad
+
+	def updateST(self, s, t):
+		if len(self.s) >= self.m:
+			del self.s[0]
+			del self.t[0]
+		self.s.append(s)
+		self.t.append(t)
+
+	def getDirection(self, q):
+		# two-loop
+		k = min(self.m, len(self.s))
+		s = self.s
+		t = self.t
+		self.alpha = [0 for i in xrange(k)]
+		self.rho = [0 for i in xrange(k)]
+		for i in range(k)[::-1]:
+			s_t = jdotj(s[i], t[i])
+			self.rho[i] = 1.0 / s_t
+			self.alpha[i] = self.rho[i] * jdotj(s[i], q)
+			q = jminj(q, ndotj(self.alpha[i], t[i]))
+		r = ndotj(self.H, q)
+		for i in xrange(k):
+			beta = self.rho[i] * jdotj(t[i], r)
+			r = jaddj(r, ndotj(self.alpha[i] - beta, s[i]))
+		return r
+
+
+	def learn(self):
+		self.lastGrad = self.loss.getGradient(self.y, self.x)
+		realRound = 1
+		while True:
+			grad = self.runARound()
+			realRound += 1
+			if realRound > self.round or self.stop > getAbs(grad):
+				break
+		#if realRound < self.round:
+		#	print "Reach the gap: %f" % getAbs(grad)
+		#	print "Run %d rounds." % realRound
+		#else:
+		#	print "Run off round."
+
+class LBFGS2:
+
+	def __init__(self, loss, x, y, round):
+		self.stop = 0.001
+		self.round = round
+		self.loss = loss
+		self.x = x
+		self.y = y
+		self.h = []
+		self.m = 10
+		self.s = [] # si = xi - xi-1
+		self.t = [] # ti = gi - gi-1
+		self.H = 1
+		self.lastGrad = [0 for i in xrange(len(self.x[0]))]
+		#self.lastGrad = self.loss.getGradient(self.y, self.x)
+		self.grad = 0
+		self.stepSize = 0.1
+		self.alpha = [0 for i in xrange(self.m)]
+		self.rho = [0 for i in xrange(self.m)]
+		self.gradNorm = 1
+
+	def runARound(self):
+		direction = self.getDirection(self.lastGrad)
+		thisw = jminj(self.loss.w, ndotj(self.stepSize, direction))
+		self.loss.updateWeight2(thisw)
 		#s = jminj(thisw, self.loss.w)
 		s = ndotj(0 - self.stepSize, direction)
 		self.grad = self.loss.getGradient(self.y, self.x)
@@ -95,34 +169,20 @@ class LBFGS:
 		k = min(self.m, len(self.s))
 		s = self.s
 		t = self.t
-		alpha = [0 for i in xrange(k)]
-		rho = [0 for i in xrange(k)]
 		for i in range(k)[::-1]:
 			s_t = jdotj(s[i], t[i])
-			rho[i] = 1.0 / s_t
-			alpha[i] = rho[i] * jdotj(s[i], q)
-			q = jminj(q, ndotj(alpha[i], t[i]))
+			self.rho[i] = 1.0 / s_t
+			self.alpha[i] = self.rho[i] * jdotj(s[i], q)
+			q = jminj(q, ndotj(self.alpha[i], t[i]))
 		r = ndotj(self.H, q)
 		for i in xrange(k):
-			beta = rho[i] * jdotj(t[i], r)
-			r = jaddj(r, ndotj(alpha[i] - beta, s[i]))
+			beta = self.rho[i] * jdotj(t[i], r)
+			r = jaddj(r, ndotj(self.alpha[i] - beta, s[i]))
 		return r
-
 
 	def learn(self):
 		self.lastGrad = self.loss.getGradient(self.y, self.x)
-		realRound = 1
-		while True:
-			grad = self.runARound()
-			realRound += 1
-			if realRound > self.round or self.stop > getAbs(grad):
-				break
-		#if realRound < self.round:
-		#	print "Reach the gap: %f" % getAbs(grad)
-		#	print "Run %d rounds." % realRound
-		#else:
-		#	print "Run off round."
-
+		self.lastGrad = self.runARound()
 
 def genRandomData(featureSize, sampleSize):
 	y, x, w = [], [], []
@@ -151,13 +211,25 @@ def runInOneTime(x, y, w, sampleSize, featureSize):
 def runOneByOne(x, y, w, sampleSize, featureSize):
 	lg = LinearReg(featureSize)
 	bfgs = LBFGS(lg, x, y, sampleSize)
-	#flag = 10.0
 	for i in xrange(sampleSize):
-		#bfgs.stop = max(flag, 0.001)
 		bfgs.x = [x[i]]
 		bfgs.y = [y[i]]
 		bfgs.learn()
-		#flag = flag / 10
+	allLoss = 0
+	for i, x_i in enumerate(x):
+		loss = lg.getLoss(y[i], x_i)
+		allLoss += loss
+	print "true model is\n%s" % (str(w))
+	print "my model is\n%s" % (lg.w)
+	print "avgLoss: %f" % (allLoss/sampleSize)
+
+def runOneByOne2(x, y, w, sampleSize, featureSize):
+	lg = LinearReg(featureSize)
+	bfgs = LBFGS2(lg, x, y, sampleSize)
+	for i in xrange(sampleSize):
+		bfgs.x = [x[i]]
+		bfgs.y = [y[i]]
+		bfgs.learn()
 	allLoss = 0
 	for i, x_i in enumerate(x):
 		loss = lg.getLoss(y[i], x_i)
@@ -167,17 +239,23 @@ def runOneByOne(x, y, w, sampleSize, featureSize):
 	print "avgLoss: %f" % (allLoss/sampleSize)
 
 def test():
-	featureSize = 40
-	sampleSize = 10000
+	featureSize = 400
+	sampleSize = 20000
 	y, x, w = genRandomData(featureSize, sampleSize)
 	start = time.clock()
 	#for i in range(10):
 	runOneByOne(x, y, w, sampleSize, featureSize)
 	end = time.clock()
-	print "run one by one use: %s" % (end - start)
+	print "#1# run one by one use: %s" % (end - start)
+	start = end
+	runOneByOne2(x, y, w, sampleSize, featureSize)
+	end = time.clock()
+	print "#2# run one by one use: %s" % (end - start)
+	#start = end
 	#for i in range(10):
-	runInOneTime(x, y, w, sampleSize, featureSize)
-	print "run in one time use: %s" % (time.clock() - end)
+	#runInOneTime(x, y, w, sampleSize, featureSize)
+	#end = time.clock()
+	#print "run in one time use: %s" % (end - start)
 
 if __name__ == '__main__':
 	test()

@@ -2,6 +2,7 @@
 
 import math
 import random
+import time
 
 def jdotj(a, b):
 	if len(a) != len(b):
@@ -41,16 +42,14 @@ def getAbs(l):
 	res = 0
 	for i in l:
 		res += i*i
-	t = math.sqrt(res)
-	#print t
-	return t
+	return math.sqrt(res)
 
 class OGD:
 
 	def __init__(self, loss, x, y, round):
-		self.stop = 0.00001
+		self.stop = -1
 		self.round = round
-		self.realRound = 1
+		self.realRound = 0
 		self.loss = loss
 		self.x = x
 		self.y = y
@@ -65,10 +64,26 @@ class OGD:
 		while self.realRound < self.round and self.stop < getAbs(deltaG):
 			deltaG = self.runARound(self.y[self.realRound], self.x[self.realRound])
 			self.realRound += 1
-		if self.realRound < self.round:
-			print "Reach the gap: %f" % getAbs(deltaG)
-		else:
-			print "Run off round."
+
+class OGD2:
+
+	def __init__(self, loss, x, y, round):
+		self.stop = 0.001
+		self.round = round
+		self.realRound = 0
+		self.loss = loss
+		self.x = x
+		self.y = y
+		self.deltaG = None
+		self.deltaGN = 1
+
+	def runARound(self, y, x):
+		deltaG = self.loss.getGradient(y, x)
+		self.loss.updateWeight(deltaG)
+		return deltaG
+
+	def learn(self):
+		self.deltaG = self.runARound(self.y, self.x)
 
 
 def genRandomData(featureSize, sampleSize):
@@ -85,21 +100,45 @@ def genRandomData(featureSize, sampleSize):
 		y.append(jdotj(tmp, w))
 	return y,x,w
 
-def test():
-	featureSize = 2000
-	sampleSize = 30000
-	y, x, w = genRandomData(featureSize, sampleSize)
+def runInOneTime(x, y, w, sampleSize, featureSize):
 	lg = LinearReg(featureSize)
 	ogd = OGD(lg, x, y, sampleSize)
 	ogd.learn()
-	#print gd.loss.w, gd.realRound
 	allLoss = 0
 	for i, x_i in enumerate(x):
 		loss = lg.getLoss(y[i], x_i)
 		allLoss += loss
-	#print "true model is %s" % (str(w))
-	#print "my model is   %s" % (lg.w)
+	print "true model is\n%s" % (str(w))
+	print "my model is\n%s" % (lg.w)
 	print "avgLoss: %f" % (allLoss/sampleSize)
+
+def runOneByOne(x, y, w, sampleSize, featureSize):
+	lg = LinearReg(featureSize)
+	ogd = OGD2(lg, x, y, sampleSize)
+	for i in xrange(sampleSize):
+		ogd.x = x[i]
+		ogd.y = y[i]
+		ogd.learn()
+	allLoss = 0
+	for i, x_i in enumerate(x):
+		loss = lg.getLoss(y[i], x_i)
+		allLoss += loss
+	print "true model is\n%s" % (str(w))
+	print "my model is\n%s" % (lg.w)
+	print "avgLoss: %f" % (allLoss/sampleSize)
+
+def test():
+	featureSize = 40
+	sampleSize = 20000
+	y, x, w = genRandomData(featureSize, sampleSize)
+	start = time.clock()
+	#for i in range(10):
+	#runOneByOne(x, y, w, sampleSize, featureSize)
+	#end = time.clock()
+	#print "run one by one use: %s" % (end - start)
+	#for i in range(10):
+	runInOneTime(x, y, w, sampleSize, featureSize)
+	print "run in one time use: %s" % (time.clock() - start)
 
 if __name__ == '__main__':
 	test()
