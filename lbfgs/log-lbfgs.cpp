@@ -255,10 +255,10 @@ void test2() {
     int featureSize = 20;
     int sampleSize = 10000;
     generateData2(x, y, weight, featureSize, sampleSize);
-//    cout << "init data done." << endl;
+    cout << "init data done." << endl;
     LogLoss ll;
 	LBFGS lbfgs(ll, x, y, featureSize, sampleSize);
-//    cout << "begin learn" << endl;
+    cout << "begin learn" << endl;
 	lbfgs.learn();
     cout << "true model is: " << endl;
     outputModel(weight, featureSize);
