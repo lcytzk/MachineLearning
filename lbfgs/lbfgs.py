@@ -145,8 +145,8 @@ def test():
 	for i, x_i in enumerate(x):
 		loss = lg.getLoss(y[i], x_i)
 		allLoss += loss
-	print "true model is %s" % (str(w))
-	print "my model is   %s" % (lg.w)
+	print "true model is\n%s" % (str(w))
+	print "my model is\n%s" % (lg.w)
 	print "avgLoss: %f" % (allLoss/sampleSize)
 
 if __name__ == '__main__':
