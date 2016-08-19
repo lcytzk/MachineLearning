@@ -251,7 +251,6 @@ int getIndex(string item) {
 }
 
 bool getNextXY(double* x, double* y, ifstream& fo, vector<string>& v) {
-//    cout << "read a line" << endl;
     if(fo.eof()) {
         cout << "reach the file end." << endl;
         return false;
@@ -262,7 +261,6 @@ bool getNextXY(double* x, double* y, ifstream& fo, vector<string>& v) {
     splitString(str, v, "\t");
     y[0] = atoi(v[0].c_str()) == 1 ? 1 : 0;
     for(int i = 2; i < v.size(); ++i) {
-//        printf("getindex: %d\n", getIndex(v[i]));
         x[getIndex(v[i])] = 1.0;
     }
     return true;

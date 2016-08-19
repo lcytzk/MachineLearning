@@ -11,13 +11,6 @@
 
 using namespace std;
 
-void outputModel(double* model, int size) {
-    for(int i = 0; i < size; ++i) {
-        printf("%f\t", model[i]);
-    }
-    printf("\n");
-}
-
 class SparseVector {
     private:
         map<int, double> index2value;
@@ -32,24 +25,50 @@ class SparseVector {
         void clear() { indexs.clear(); index2value.clear(); };
         int size() { return indexs.size(); }
         void scal(double alpha);
+        void output() {
+            for(int i = 0; i < indexs.size(); ++i) {
+                printf("index1:%d\tindex2:%d\tvalue:%f\n", i, indexs[i], index2value[indexs[i]]);
+            }
+        }
+        void saveToFile() {
+            ofstream fw;
+            fw.open("/root/liangchenye/res.txt");
+            for(int i = 0; i < indexs.size(); ++i) {
+                fw << indexs[i] << '\t' << index2value[indexs[i]] << endl;
+            }
+            fw.close();
+        }
+        int operator[](const int i) const {
+            return indexs[i];
+        }
+        double norm();
 };
+
+double SparseVector::norm() {
+    double res = 0;
+    for(int i = 0; i < indexs.size(); ++i) {
+        res += pow(index2value[indexs[i]],2);
+    }
+    return sqrt(res);
+}
 
 double SparseVector::dot(SparseVector& x) {
     double res = 0;
     for(int i = 0; i < indexs.size(); ++i) {
         res += index2value[indexs[i]] * x.getVal(indexs[i]);
     }
+//    cout << "dot  " << res << endl;
     return res;
 }
 
 void SparseVector::pax(double alpha, SparseVector& x) {
-    if (x.size() > size()) {
-        for(int i = 0; i < indexs.size(); ++i) {
-            index2value[indexs[i]] += alpha * x.getVal(indexs[i]);
-        }
-    } else {
-        for(int i = 0; i < x.indexs.size(); ++i) {
+    //cout << alpha << endl;
+//    x.output();
+    for(int i = 0; i < x.indexs.size(); ++i) {
+        if(index2value.find(x.indexs[i]) != index2value.end()) {
             index2value[x.indexs[i]] += alpha * x.getVal(x.indexs[i]);
+        } else {
+            addItem(x.indexs[i], alpha * x.getVal(x.indexs[i]));
         }
     }
 }
@@ -117,26 +136,31 @@ class LogLoss : public Loss {
 };
 
 double LogLoss::getVal(SparseVector& w, SparseVector& _x) {
-	return 1.0 / (1.0 + exp(0 - w.dot(_x))) > 0.5 ? 1 : 0;
+	return 1.0 / (1.0 + exp(0 - _x.dot(w)));
 }
 
 double LogLoss::getLoss(SparseVector& w, SparseVector& _x, double _y) {
-	return _y - getVal(w, _x);
+	return _y - 1.0 / (1.0 + exp(0 - _x.dot(w)));
 }
 
 SparseVector* LogLoss::getGradient(SparseVector& w, SparseVector& _x, double _y) {
+//    cout << "wwwwwwww" << endl;
+//    w.output();
+//    cout << "_______xxxxxx" << endl;
+//    _x.output();
 	SparseVector* t = new SparseVector();
 	for (int i = 0; i < _x.size(); ++i) {
         if (_x[i] != 0) {
             t->addItem(_x[i], getLoss(w, _x, _y) * _x.getVal(_x[i]));
         }
 	}
+//    cout << "ttttttttt" << endl;
+//    t->output();
 	return t;
 }
 
 class SLBFGS {
 	private:
-		int stopRound;
 		float stopGrad;
 		Loss& loss;
 		SparseVector* lastGrad;
@@ -150,81 +174,99 @@ class SLBFGS {
 
 		// return gradient.
 		void runARound();
-		void updateST(double* _s, double* _t);
-		double* getDirection(double* q);
+		void updateST(SparseVector* _s, SparseVector* _t);
+		SparseVector* getDirection(SparseVector& q);
 	public:
 		SparseVector weight;
-		SparseVector* x;
+		SparseVector& x;
 		double& y;
 		SLBFGS(Loss& _loss, SparseVector& _x, double& _y): loss(_loss), x(_x), y(_y) {
-            m = 10;
+            m = 30;
 			weight = SparseVector();
 			alpha = (double*) malloc(sizeof(double) * m);
 			rho = (double*) malloc(sizeof(double) * m);
 			s = new LoopArray(m);
 			t = new LoopArray(m);
-			stepSize = 0.1;
-			stopGrad = -1;
-            stopRound = sampleSize;
+			stepSize = 0.05;
+			stopGrad = 0.000001;
 		};
 		bool learn();
 };
 
 bool SLBFGS::learn() {
-    lastGrad = loss.getGradient(weight, x, y, featureSize, sampleSize);
+    lastGrad = loss.getGradient(weight, x, y);
+    //lastGrad->output();
     runARound();
-    //if(cblas_dnrm2(featureSize, lastGrad, 1) < stopGrad) {
-    //    cout << "Reach the gap" << endl;
-    //    return false;
-    //}
+    double norm = lastGrad->norm();
+    cout << norm << endl;
+    free(lastGrad);
+    if(norm < stopGrad) {
+        cout << "Reach the gap  " << norm << endl;
+        return false;
+    }
     return true;
 }
 
 void SLBFGS::runARound() {
-    SparseVector* direction = getDirection(lastGrad);
+    SparseVector* direction = getDirection(*lastGrad);
+//    cout << "diredddd" << endl;
+//    direction->output();
 	//  weight = weight - direction * stepSize;
 	//cblas_daxpy(featureSize, 0 - stepSize, direction, 1, weight, 1); // weight will be updated here.
-    weight.pax(0 - stepSize, direction);
+//    cout << "before weight" << endl;
+//   weight.output();
+    weight.pax(0 - stepSize, *direction);
+//    cout << "after weight" << endl;
+//    weight.output();
 	// s = thisW - lastW = -direction * step
 	//cblas_dscal(featureSize, 0 - stepSize, direction, 1); // direction will be s.
     direction->scal(0 - stepSize);
 	SparseVector* s = direction;
-	SparseVector* grad = loss.getGradient(weight, x, y, featureSize, sampleSize);
+	SparseVector* grad = loss.getGradient(weight, x, y);
+//    cout << "new grad" << endl;
+//    grad->output();
 	// grad = grad - lastGrad, lastGrad = lastGrad + grad
 	//cblas_daxpy(featureSize, -1, lastGrad, 1, grad, 1);
-    grad->pax(-1, lastGrad);
+    grad->pax(-1, *lastGrad);
 	//cblas_daxpy(featureSize, 1, grad, 1, lastGrad, 1);
-    lastGrad->pax(1, grad);
+    lastGrad->pax(1, *grad);
 	// grad = grad - lastGrad grad will be y
 	SparseVector* y = grad;
 	updateST(s, y);
 	//H = cblas_ddot(featureSize, y, 1, s, 1) / cblas_ddot(featureSize, y, 1, y, 1);
-    H = s.dot(y) / y.dot(y);
+    H = s->dot(*y) / y->dot(*y);
 }
 
 SparseVector* SLBFGS::getDirection(SparseVector& qq) {
 	// two loop
 	SparseVector* q = new SparseVector(qq);
+//    cout << "qqqqqqqqqqq" << endl;
+//    q->output();
 	int k = min(m, s->size());
 	for (int i = k-1; i >= 0; --i) {
 		//rho[i] = 1.0 / cblas_ddot(featureSize, (*s)[i], 1, (*t)[i], 1);
-        rho[i] = 1.0 / (*s)[i]->dot(*(*t)[i]));
+        //(*s)[i].output();
+        //(*t)[i].output();
+        rho[i] = 1.0 / (*s)[i].dot((*t)[i]);
+        //printf("rho[i]: %f\n", rho[i]);
 		//alpha[i] = cblas_ddot(featureSize, (*s)[i], 1, q, 1) * rho[i];
-        alpha[i] = q->dot(*(*s)[i]) * rho[i];
+        alpha[i] = q->dot((*s)[i]) * rho[i];
 		// q = q - alpha[i] * t[i];
         //cblas_daxpy(featureSize, (0 - alpha[i]), (*t)[i], 1, q, 1);
-        q->pax(0 - alpha[i], *(*t)[i]);
+        q->pax(0 - alpha[i], (*t)[i]);
 	}
 	// q = H * q;
 	//cblas_dscal(featureSize, H, q, 1);
+  //  cout << "111111111111qqqqqqqqqqq" << endl;
+   // q->output();
     q->scal(H);
 	for (int i = 0; i < k; ++i) {
 		// double beta = rho[i] * t[i] * q;
 		//double beta = rho[i] * cblas_ddot(featureSize, q, 1, (*t)[i], 1);
-        double beta = rho[i] * q->dot(*(*t)[i]);
+        double beta = rho[i] * q->dot((*t)[i]);
 		// q = q + (alpha[i] - beta) * s[i];
 		//cblas_daxpy(featureSize, alpha[i] - beta, (*s)[i], 1, q, 1);
-        q->pax(alpha[i] - beta, *(*s)[i]);
+        q->pax(alpha[i] - beta, (*s)[i]);
 	}
 	return q;
 }
@@ -232,6 +274,10 @@ SparseVector* SLBFGS::getDirection(SparseVector& qq) {
 void SLBFGS::updateST(SparseVector* _s, SparseVector* _t) {
 	s->appendAndRemoveFirstIfFull(_s);
 	t->appendAndRemoveFirstIfFull(_t);
+    //cout << "_s" << endl;
+    //_s->output();
+    //cout << "_t" << endl;
+    //_t->output();
 }
 
 void splitString(const std::string& s, std::vector<std::string>& v, const std::string& c) {
@@ -268,28 +314,42 @@ bool getNextXY(SparseVector& x, double& y, ifstream& fo, vector<string>& v) {
     }
     string str;
     getline(fo, str);
+    if(str.length() < 2) {
+        return false;
+    }
     v.clear();
-    splitString(str, v, "\t");
+    splitString(str, v, " ");
     x.clear();
-    y = atoi(v[0].c_str()) == 1 ? 1 : 0;
+    y = (atoi(v[0].c_str()) == 1) ? 1.0 : 0;
+    //printf("v[0]: %s\t y:%f\tbool:%d\n", v[0].c_str(), y, atoi(v[0].c_str()) == 1);
     for(int i = 2; i < v.size(); ++i) {
         x.addItem(getIndex(v[i]), 1.0);
     }
     return true;
 }
 
-void outputAcu(SLBFGS& slbfgs, double** xx, double* yy, LogLoss& ll, ifstream& fo) {
+void outputAcu(SLBFGS& slbfgs, LogLoss& ll) {
+    SparseVector xx;
+    double yy;
+    ifstream fo;
     fo.open("/root/liangchenye/mine/MachineLearning/lbfgs/in2-2.txt");
-    string str;
-    getline(fo, str);
     double allLoss = 0;
     int count = 0;
     int sampleSize = 0;
     vector<string> v;
-    while (getNextXY(xx[0], yy, fo, v)) {
-        allLoss += ll.getLoss(slbfgs.weight, xx[0], yy[0]);
-        double val = ll.getVal(slbfgs.weight, xx[0]);
-        if(val == yy[0]) {
+    int count1 = 0;
+    int count1_shot = 0;
+    while (getNextXY(xx, yy, fo, v)) {
+        allLoss += ll.getLoss(slbfgs.weight, xx, yy);
+        double val = ll.getVal(slbfgs.weight, xx);
+    //    cout << val << endl;
+        if(yy == 1) {
+            ++count1;
+        }
+        if((val > 0.5 ? 1 : 0) == yy) {
+            if (yy == 1) {
+                ++count1_shot;
+            }
             ++count;
         }
         ++sampleSize;
@@ -298,10 +358,14 @@ void outputAcu(SLBFGS& slbfgs, double** xx, double* yy, LogLoss& ll, ifstream& f
     cout << "avg loss: " << allLoss / sampleSize << endl;
     cout << "count percent: " << ((double) count) / sampleSize << endl;
     cout << "count: " << count << endl;
+    cout << "count1: " << count1 << endl;
+    cout << "count1_shot: " << count1_shot << endl;
     cout << "sampleSize: " << sampleSize << endl;
+    slbfgs.weight.saveToFile();
 }
 
-void test(ifstream& fo) {
+void test() {
+    ifstream fo;
     SparseVector xx;
     double yy;
     vector<string> v;
@@ -311,39 +375,44 @@ void test(ifstream& fo) {
     cout << "begin learn" << endl;
     int start_time = clock();
     int loop = 0;
-    while (getNextXY(xx, yy, fo, v)) {
-        ++loop;
-	    if(!slbfgs.learn()) {
-            break;
+    for(int i = 0; i < 5; ++i) {
+        fo.open("/root/liangchenye/mine/MachineLearning/lbfgs/in2-2.txt");
+        while (getNextXY(xx, yy, fo, v)) {
+            ++loop;
+	        if(!slbfgs.learn()) {
+                flag = true;
+                break;
+            }
         }
+        fo.close();
+        if(flag) break;
     }
-    printf("Learn finished run %d rounds.", loop);
+    printf("Learn finished run %d rounds.", --loop);
     cout << "Used time: " << (clock() - start_time)/double(CLOCKS_PER_SEC)*1000 << endl; 
-    cout << "learn finish." << endl;
-    fo.close();
-//    outputAcu(slbfgs, xx, yy, ll, fo);
+    outputAcu(slbfgs, ll);
 //    free(xx[0]);
 //    free(xx);
 //    free(yy);
 }
 
-void loadData(ifstream& fo) {
-    fo.open("/root/liangchenye/mine/MachineLearning/lbfgs/in2-2.txt");
-}
-
-int getFeatureSize() {
-    ifstream fo;
-    fo.open("/root/liangchenye/mine/MachineLearning/lbfgs/count.txt");
-    string str;
-    getline(fo, str);
-    return atoi(str.c_str());
+void test2() {
+    SparseVector sv;
+    SparseVector sv2;
+    for(int i = 0; i < 10; ++i) {
+        sv.addItem(i*5, 2.0);
+    }
+    for(int i = 0; i < 5; ++i) {
+        sv2.addItem(i*4, 3.0);
+    }
+    sv.output();
+    sv2.output();
+    cout << sv.dot(sv2) << endl;
+    sv.pax(1, sv2);
+    sv.output();
 }
 
 int main(int argc, char* argv[]) {
-    ifstream fo;
-    loadData(fo);
-    test(fo);
-    fo.close();
+    test();
     cout << "finish program." << endl;
 	return 0;
 }
