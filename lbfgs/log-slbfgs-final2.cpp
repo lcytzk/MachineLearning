@@ -43,8 +43,14 @@ double SparseVector::dot(SparseVector& x) {
 }
 
 void SparseVector::pax(double alpha, SparseVector& x) {
-    for(int i = 0; i < indexs.size(); ++i) {
-        index2value[indexs[i]] += alpha * x.getVal(indexs[i]);
+    if (x.size() > size()) {
+        for(int i = 0; i < indexs.size(); ++i) {
+            index2value[indexs[i]] += alpha * x.getVal(indexs[i]);
+        }
+    } else {
+        for(int i = 0; i < x.indexs.size(); ++i) {
+            index2value[x.indexs[i]] += alpha * x.getVal(x.indexs[i]);
+        }
     }
 }
 
@@ -122,7 +128,7 @@ SparseVector* LogLoss::getGradient(SparseVector& w, SparseVector& _x, double _y)
 	SparseVector* t = new SparseVector();
 	for (int i = 0; i < _x.size(); ++i) {
         if (_x[i] != 0) {
-            t.addItem(_x[i], getLoss(w, _x, _y) * _x.getVal(_x[i]));
+            t->addItem(_x[i], getLoss(w, _x, _y) * _x.getVal(_x[i]));
         }
 	}
 	return t;
@@ -181,7 +187,7 @@ void SLBFGS::runARound() {
     weight.pax(0 - stepSize, direction);
 	// s = thisW - lastW = -direction * step
 	//cblas_dscal(featureSize, 0 - stepSize, direction, 1); // direction will be s.
-    direction.scal(0 - stepSize);
+    direction->scal(0 - stepSize);
 	SparseVector* s = direction;
 	SparseVector* grad = loss.getGradient(weight, x, y, featureSize, sampleSize);
 	// grad = grad - lastGrad, lastGrad = lastGrad + grad
@@ -202,23 +208,23 @@ SparseVector* SLBFGS::getDirection(SparseVector& qq) {
 	int k = min(m, s->size());
 	for (int i = k-1; i >= 0; --i) {
 		//rho[i] = 1.0 / cblas_ddot(featureSize, (*s)[i], 1, (*t)[i], 1);
-        rho[i] = 1.0 / (*s)[i].dot((*t)[i]));
+        rho[i] = 1.0 / (*s)[i]->dot(*(*t)[i]));
 		//alpha[i] = cblas_ddot(featureSize, (*s)[i], 1, q, 1) * rho[i];
-        alpha[i] = q.dot((*s)[i]) * rho[i];
+        alpha[i] = q->dot(*(*s)[i]) * rho[i];
 		// q = q - alpha[i] * t[i];
         //cblas_daxpy(featureSize, (0 - alpha[i]), (*t)[i], 1, q, 1);
-        q.pax(0 - alpha[i], (*t)[i]);
+        q->pax(0 - alpha[i], *(*t)[i]);
 	}
 	// q = H * q;
 	//cblas_dscal(featureSize, H, q, 1);
-    q.scal(H);
+    q->scal(H);
 	for (int i = 0; i < k; ++i) {
 		// double beta = rho[i] * t[i] * q;
 		//double beta = rho[i] * cblas_ddot(featureSize, q, 1, (*t)[i], 1);
-        double beta = rho[i] * q.dot((*t)[i]);
+        double beta = rho[i] * q->dot(*(*t)[i]);
 		// q = q + (alpha[i] - beta) * s[i];
 		//cblas_daxpy(featureSize, alpha[i] - beta, (*s)[i], 1, q, 1);
-        q.pax(alpha[i] - beta, (*s)[i]);
+        q->pax(alpha[i] - beta, *(*s)[i]);
 	}
 	return q;
 }
