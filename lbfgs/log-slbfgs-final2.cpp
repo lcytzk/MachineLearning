@@ -42,7 +42,7 @@ double SparseVector::dot(SparseVector& x) {
     return res;
 }
 
-double SparseVector::pax(double alpha, SparseVector& x) {
+void SparseVector::pax(double alpha, SparseVector& x) {
     for(int i = 0; i < indexs.size(); ++i) {
         index2value[indexs[i]] += alpha * x.getVal(indexs[i]);
     }
@@ -69,15 +69,15 @@ class LoopArray {
 		int start, end;
 		int realSize;
 		int maxSize;
-		SparseVector* array;
+		SparseVector** array;
 	public:
 		LoopArray(int _size) : maxSize(_size) {
 			realSize = 0;
 			start = end = 0;
-			array = (SparseVector*) malloc(sizeof(SparseVector) * _size);
+			array = (SparseVector**) malloc(sizeof(SparseVector*) * _size);
 		}
-		SparseVector* operator[](const int _index) const {
-    		return array[(_index + start) % maxSize];
+		SparseVector& operator[](const int _index) const {
+    		return *array[(_index + start) % maxSize];
 		}
 		void appendAndRemoveFirstIfFull(SparseVector* element) {
 			if (realSize == maxSize) {
@@ -98,19 +98,19 @@ class LoopArray {
 
 class Loss {
 	public:
-        virtual double getVal(SparseVector& w, SparseVector* _x) = 0;
+        virtual double getVal(SparseVector& w, SparseVector& _x) = 0;
 		virtual double getLoss(SparseVector& w, SparseVector& _x, double _y) = 0;
 		virtual SparseVector* getGradient(SparseVector& w, SparseVector& _x, double _y) = 0;
 };
 
 class LogLoss : public Loss {
     public:
-        double getVal(SparseVector& w, SparseVector* _x);
+        double getVal(SparseVector& w, SparseVector& _x);
         double getLoss(SparseVector& w, SparseVector& _x, double _y);
         SparseVector* getGradient(SparseVector& w, SparseVector& _x, double _y);
 };
 
-double LogLoss::getVal(SparseVector& w, SparseVector* _x) {
+double LogLoss::getVal(SparseVector& w, SparseVector& _x) {
 	return 1.0 / (1.0 + exp(0 - w.dot(_x))) > 0.5 ? 1 : 0;
 }
 
@@ -300,7 +300,7 @@ void test(ifstream& fo) {
     double yy;
     vector<string> v;
     LogLoss ll;
-	SLBFGS slbfgs(ll, xx, yy, 1);
+	SLBFGS slbfgs(ll, xx, yy);
     bool flag = false;
     cout << "begin learn" << endl;
     int start_time = clock();
@@ -315,7 +315,7 @@ void test(ifstream& fo) {
     cout << "Used time: " << (clock() - start_time)/double(CLOCKS_PER_SEC)*1000 << endl; 
     cout << "learn finish." << endl;
     fo.close();
-    outputAcu(slbfgs, xx, yy, ll, fo);
+//    outputAcu(slbfgs, xx, yy, ll, fo);
 //    free(xx[0]);
 //    free(xx);
 //    free(yy);
