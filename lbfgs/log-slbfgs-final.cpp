@@ -118,7 +118,9 @@ class SLBFGS {
 			memset(weight, 0, sizeof(double) * featureSize);
 			alpha = (double*) malloc(sizeof(double) * m);
 			rho = (double*) malloc(sizeof(double) * m);
+            cout << "get first grad" << endl;
 	        lastGrad = loss.getGradient(weight, x, y, featureSize, sampleSize);
+            cout << "get first grad done" << endl;
 			//lastGrad = (double*) malloc(sizeof(double) * featureSize);
 			s = new LoopArray(m);
 			t = new LoopArray(m);
@@ -248,17 +250,19 @@ int getIndex(string item) {
     return table.size();
 }
 
-bool getNextXY(double* x, double* y, ifstream& fo) {
+bool getNextXY(double* x, double* y, ifstream& fo, vector<string>& v) {
+//    cout << "read a line" << endl;
     if(fo.eof()) {
         cout << "reach the file end." << endl;
         return false;
     }
     string str;
-    vector<string> v;
     getline(fo, str);
+    v.clear();
     splitString(str, v, "\t");
-    y[0] = atof(v[0].c_str());
-    for(int i = 1; i < v.size(); ++i) {
+    y[0] = atoi(v[0].c_str()) == 1 ? 1 : 0;
+    for(int i = 2; i < v.size(); ++i) {
+//        printf("getindex: %d\n", getIndex(v[i]));
         x[getIndex(v[i])] = 1.0;
     }
     return true;
@@ -271,7 +275,8 @@ void outputAcu(SLBFGS& slbfgs, int featureSize, double** xx, double* yy, LogLoss
     double allLoss = 0;
     int count = 0;
     int sampleSize = 0;
-    while (getNextXY(xx[0], yy, fo)) {
+    vector<string> v;
+    while (getNextXY(xx[0], yy, fo, v)) {
         allLoss += ll.getLoss(slbfgs.weight, xx[0], yy[0], featureSize);
         double val = ll.getVal(slbfgs.weight, xx[0], featureSize);
         if(val == yy[0]) {
@@ -287,46 +292,55 @@ void outputAcu(SLBFGS& slbfgs, int featureSize, double** xx, double* yy, LogLoss
 }
 
 void test(int featureSize, ifstream& fo) {
-    double* weight;
     cout << "feature size is: " << featureSize << endl;
-    cout << "begin learn" << endl;
     double** xx = (double**) malloc(sizeof(double*));
     xx[0] = (double*) malloc(sizeof(double) * featureSize);
+    memset(xx[0], 0, featureSize * sizeof(double));
+    cout << "init xx done." << endl;
     double* yy = (double*) malloc(sizeof(double));
-    getNextXY(xx[0], yy, fo);
+    cout << "init yy done." << endl;
+    vector<string> v;
+    getNextXY(xx[0], yy, fo, v);
+    cout << "get first xy done." << endl;
     LogLoss ll;
 	SLBFGS slbfgs(ll, xx, yy, featureSize, 1);
     bool flag = false;
-    cout << "begin loop" << endl;
+    cout << "begin learn" << endl;
+    int start_time = clock();
     int loop = 0;
-    while (getNextXY(xx[0], yy, fo)) {
+    while (getNextXY(xx[0], yy, fo, v)) {
+        ++loop;
 	    if(!slbfgs.learn()) {
             break;
         }
-//        cout << loop++ << endl;
+        memset(xx[0], 0, featureSize * sizeof(double));
     }
-    fo.close();
+    printf("Learn finished run %d rounds.", loop);
+    cout << "Used time: " << (clock() - start_time)/double(CLOCKS_PER_SEC)*1000 << endl; 
     cout << "learn finish." << endl;
+    fo.close();
     outputAcu(slbfgs, featureSize, xx, yy, ll, fo);
-//    cout << "free xx[0]" << endl;
 //    free(xx[0]);
-//    cout << "free xx" << endl;
 //    free(xx);
-//    cout << "free yy" << endl;
 //    free(yy);
 }
 
-int loadData(ifstream& fo) {
+void loadData(ifstream& fo) {
     fo.open("/root/liangchenye/mine/MachineLearning/lbfgs/in2-2.txt");
+}
+
+int getFeatureSize() {
+    ifstream fo;
+    fo.open("/root/liangchenye/mine/MachineLearning/lbfgs/count.txt");
     string str;
     getline(fo, str);
-    int featureSize = atoi(str.c_str());
-    return featureSize;
+    return atoi(str.c_str());
 }
 
 int main(int argc, char* argv[]) {
     ifstream fo;
-    int featureSize = loadData(fo);
+    int featureSize = getFeatureSize();
+    loadData(fo);
     test(featureSize, fo);
     fo.close();
     cout << "finish program." << endl;
