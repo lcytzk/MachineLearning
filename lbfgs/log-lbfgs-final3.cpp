@@ -323,10 +323,6 @@ SparseVector* LBFGS::getDirection(SparseVector& qq) {
 void LBFGS::updateST(SparseVector* _s, SparseVector* _t) {
 	s->appendAndRemoveFirstIfFull(_s);
 	t->appendAndRemoveFirstIfFull(_t);
-    //cout << "_s" << endl;
-    //_s->output();
-    //cout << "_t" << endl;
-    //_t->output();
 }
 
 void splitString(const std::string& s, std::vector<std::string>& v, const std::string& c) {
