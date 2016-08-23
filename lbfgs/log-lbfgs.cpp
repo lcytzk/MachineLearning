@@ -74,8 +74,9 @@ double* LogLoss::getGradient(double* w, double** _x, double* _y, int featureSize
 	double* t = (double*) malloc(sizeof(double) * featureSize);
 	for (int i = 0; i < featureSize; ++i) {
 		double tmp = 0;
+		double loss = getLoss(w, _x[j], _y[j], featureSize);
 		for (int j = 0; j < sampleSize; ++j) {
-			tmp += getLoss(w, _x[j], _y[j], featureSize) * _x[j][i];
+			tmp +=  loss * _x[j][i];
 		}
 		t[i] = tmp / sampleSize;
 	}
