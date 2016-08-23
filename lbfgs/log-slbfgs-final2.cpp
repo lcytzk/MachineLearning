@@ -11,6 +11,13 @@
 
 using namespace std;
 
+int GLO = 0;
+int DIRE = 0;
+double ROUND = 0;
+double DIRE_PH1 = 0;
+double  DIRE_PH2 = 0;
+double DIRE_PH3 = 0;
+
 class SparseVector {
     private:
         map<int, double> index2value;
@@ -144,18 +151,10 @@ double LogLoss::getLoss(SparseVector& w, SparseVector& _x, double _y) {
 }
 
 SparseVector* LogLoss::getGradient(SparseVector& w, SparseVector& _x, double _y) {
-//    cout << "wwwwwwww" << endl;
-//    w.output();
-//    cout << "_______xxxxxx" << endl;
-//    _x.output();
 	SparseVector* t = new SparseVector();
 	for (int i = 0; i < _x.size(); ++i) {
-        if (_x[i] != 0) {
-            t->addItem(_x[i], getLoss(w, _x, _y) * _x.getVal(_x[i]));
-        }
+        t->addItem(_x[i], getLoss(w, _x, _y) * _x.getVal(_x[i]));
 	}
-//    cout << "ttttttttt" << endl;
-//    t->output();
 	return t;
 }
 
@@ -171,8 +170,6 @@ class SLBFGS {
 		double H = 1.0;
 		LoopArray* s;
 		LoopArray* t;
-
-		// return gradient.
 		void runARound();
 		void updateST(SparseVector* _s, SparseVector* _t);
 		SparseVector* getDirection(SparseVector& q);
@@ -194,37 +191,28 @@ class SLBFGS {
 };
 
 bool SLBFGS::learn() {
+    int start_time = clock();
     lastGrad = loss.getGradient(weight, x, y);
-    //lastGrad->output();
     runARound();
-    double norm = lastGrad->norm();
-    cout << norm << endl;
     free(lastGrad);
-    if(norm < stopGrad) {
-        cout << "Reach the gap  " << norm << endl;
-        return false;
-    }
+    ROUND += (clock() - start_time)/(double)CLOCKS_PER_SEC;
+//    if(norm < stopGrad) {
+//        cout << "Reach the gap  " << norm << endl;
+//        return false;
+//    }
     return true;
 }
 
 void SLBFGS::runARound() {
     SparseVector* direction = getDirection(*lastGrad);
-//    cout << "diredddd" << endl;
-//    direction->output();
 	//  weight = weight - direction * stepSize;
 	//cblas_daxpy(featureSize, 0 - stepSize, direction, 1, weight, 1); // weight will be updated here.
-//    cout << "before weight" << endl;
-//   weight.output();
     weight.pax(0 - stepSize, *direction);
-//    cout << "after weight" << endl;
-//    weight.output();
 	// s = thisW - lastW = -direction * step
 	//cblas_dscal(featureSize, 0 - stepSize, direction, 1); // direction will be s.
     direction->scal(0 - stepSize);
 	SparseVector* s = direction;
 	SparseVector* grad = loss.getGradient(weight, x, y);
-//    cout << "new grad" << endl;
-//    grad->output();
 	// grad = grad - lastGrad, lastGrad = lastGrad + grad
 	//cblas_daxpy(featureSize, -1, lastGrad, 1, grad, 1);
     grad->pax(-1, *lastGrad);
@@ -232,33 +220,36 @@ void SLBFGS::runARound() {
     lastGrad->pax(1, *grad);
 	// grad = grad - lastGrad grad will be y
 	SparseVector* y = grad;
-	updateST(s, y);
-	//H = cblas_ddot(featureSize, y, 1, s, 1) / cblas_ddot(featureSize, y, 1, y, 1);
-    H = s->dot(*y) / y->dot(*y);
+    if(y->dot(*s) > 0.0000001) {
+	    updateST(s, y);
+	    //H = cblas_ddot(featureSize, y, 1, s, 1) / cblas_ddot(featureSize, y, 1, y, 1);
+        H = s->dot(*y) / y->dot(*y);
+    }
 }
 
 SparseVector* SLBFGS::getDirection(SparseVector& qq) {
 	// two loop
+    int start_time = clock();
 	SparseVector* q = new SparseVector(qq);
-//    cout << "qqqqqqqqqqq" << endl;
-//    q->output();
+    int end = clock();
+    DIRE_PH1 += (end - start_time)/double(CLOCKS_PER_SEC);
+    start_time = end;
 	int k = min(m, s->size());
+    if(k > 0) rho[0] = 1.0 / (*s)[0].dot((*t)[0]);
 	for (int i = k-1; i >= 0; --i) {
 		//rho[i] = 1.0 / cblas_ddot(featureSize, (*s)[i], 1, (*t)[i], 1);
-        //(*s)[i].output();
-        //(*t)[i].output();
-        rho[i] = 1.0 / (*s)[i].dot((*t)[i]);
-        //printf("rho[i]: %f\n", rho[i]);
+        //rho[i] = 1.0 / (*s)[i].dot((*t)[i]);
 		//alpha[i] = cblas_ddot(featureSize, (*s)[i], 1, q, 1) * rho[i];
         alpha[i] = q->dot((*s)[i]) * rho[i];
 		// q = q - alpha[i] * t[i];
         //cblas_daxpy(featureSize, (0 - alpha[i]), (*t)[i], 1, q, 1);
         q->pax(0 - alpha[i], (*t)[i]);
 	}
+    end = clock();
+    DIRE_PH2 += (end - start_time)/(double)CLOCKS_PER_SEC;
+    start_time = end;
 	// q = H * q;
 	//cblas_dscal(featureSize, H, q, 1);
-  //  cout << "111111111111qqqqqqqqqqq" << endl;
-   // q->output();
     q->scal(H);
 	for (int i = 0; i < k; ++i) {
 		// double beta = rho[i] * t[i] * q;
@@ -268,6 +259,13 @@ SparseVector* SLBFGS::getDirection(SparseVector& qq) {
 		//cblas_daxpy(featureSize, alpha[i] - beta, (*s)[i], 1, q, 1);
         q->pax(alpha[i] - beta, (*s)[i]);
 	}
+    // shift rho
+    for(int i = k-1; i > 0; --i) {
+        rho[i] = rho[i-1];
+    }
+    end = clock();
+    DIRE_PH3 += (end - start_time)/(double)CLOCKS_PER_SEC;
+    //cout << q->size() << endl;
 	return q;
 }
 
@@ -321,7 +319,6 @@ bool getNextXY(SparseVector& x, double& y, ifstream& fo, vector<string>& v) {
     splitString(str, v, " ");
     x.clear();
     y = (atoi(v[0].c_str()) == 1) ? 1.0 : 0;
-    //printf("v[0]: %s\t y:%f\tbool:%d\n", v[0].c_str(), y, atoi(v[0].c_str()) == 1);
     for(int i = 2; i < v.size(); ++i) {
         x.addItem(getIndex(v[i]), 1.0);
     }
@@ -342,7 +339,6 @@ void outputAcu(SLBFGS& slbfgs, LogLoss& ll) {
     while (getNextXY(xx, yy, fo, v)) {
         allLoss += ll.getLoss(slbfgs.weight, xx, yy);
         double val = ll.getVal(slbfgs.weight, xx);
-    //    cout << val << endl;
         if(yy == 1) {
             ++count1;
         }
@@ -375,18 +371,28 @@ void test() {
     cout << "begin learn" << endl;
     int start_time = clock();
     int loop = 0;
-    for(int i = 0; i < 5; ++i) {
+//    for(int i = 0; i < 5; ++i) {
         fo.open("/root/liangchenye/mine/MachineLearning/lbfgs/in2-2.txt");
         while (getNextXY(xx, yy, fo, v)) {
             ++loop;
+            ++GLO;
+            if(loop % 1000 == 0) {
+                cout << loop << endl;
+                printf("DIRE_PH1: %f\t DIRE2: %f\t DIRE3: %f\t ROUND: %f\n", DIRE_PH1, DIRE_PH2, DIRE_PH3, ROUND);
+                DIRE = 0;
+                ROUND = 0;
+                DIRE_PH1 = 0;
+                DIRE_PH2 = 0;
+                DIRE_PH3 = 0;
+            }
 	        if(!slbfgs.learn()) {
                 flag = true;
                 break;
             }
         }
         fo.close();
-        if(flag) break;
-    }
+    //    if(flag) break;
+  //  }
     printf("Learn finished run %d rounds.", --loop);
     cout << "Used time: " << (clock() - start_time)/double(CLOCKS_PER_SEC)*1000 << endl; 
     outputAcu(slbfgs, ll);
