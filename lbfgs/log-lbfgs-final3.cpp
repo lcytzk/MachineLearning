@@ -481,7 +481,7 @@ void test() {
 	LBFGS lbfgs(ll, examples, weight);
     //bool flag = false;
     cout << "begin learn" << endl;
-//    int start_time = clock();
+    int start_time = clock();
   //  int loop = 0;
 //    for(int i = 0; i < 5; ++i) {
         //while (getNextXY(xx, yy, fo, v)) {
@@ -510,7 +510,7 @@ void test() {
     //    if(flag) break;
   //  }
 //    printf("Learn finished run %d rounds.", --loop);
-  //  cout << "Used time: " << (clock() - start_time)/double(CLOCKS_PER_SEC)*1000 << endl; 
+    cout << "One pass used time: " << (clock() - start_time)/double(CLOCKS_PER_SEC)*1000 << endl; 
     //outputAcu(LBFGS, ll);
 //    free(xx[0]);
 //    free(xx);
