@@ -18,14 +18,6 @@ double DIRE_PH1 = 0;
 double  DIRE_PH2 = 0;
 double DIRE_PH3 = 0;
 
-class Example {
-    public:
-        double prediction;
-        double label;
-        SparseVector features;
-        Example(SparseVector& _features): features(_features) {}
-};
-
 class SparseVector {
     private:
         map<int, double> index2value;
@@ -58,6 +50,14 @@ class SparseVector {
             return indexs[i];
         }
         double norm();
+};
+
+class Example {
+    public:
+        double prediction;
+        double label;
+        SparseVector features;
+        Example(SparseVector& _features): features(_features) {}
 };
 
 double SparseVector::norm() {
@@ -147,48 +147,55 @@ class LoopArray {
 
 class Loss {
 	public:
-        virtual double getVal(SparseVector& w, SparseVector& _x) = 0;
 		virtual double getLoss(SparseVector& w, SparseVector& _x, double _y) = 0;
         virtual double getFirstDeri(SparseVector& w, SparseVector& _x, double _y) = 0;
         virtual double getFirstDeri(double prediction, double _y) = 0;
 		virtual SparseVector* getGradient(SparseVector& w, SparseVector& _x, double _y) = 0;
         virtual SparseVector* getGradient(double prediction, SparseVector& _x, double _y) = 0;
-        virtual SparseVector* updateGradient(double prediction, SparseVector& _x, double _y, SparseVector& t) = 0;
+        virtual void updateGradient(double prediction, SparseVector& _x, double _y, SparseVector& t) = 0;
 };
 
-class LogLoss : public Loss {};
+class LogLoss : public Loss {
+public:
+    double getLoss(SparseVector& w, SparseVector& _x, double _y);
+    double getFirstDeri(SparseVector& w, SparseVector& _x, double _y);
+    double getFirstDeri(double prediction, double _y);
+    SparseVector* getGradient(SparseVector& w, SparseVector& _x, double _y);
+    SparseVector* getGradient(double prediction, SparseVector& _x, double _y);
+    void updateGradient(double prediction, SparseVector& _x, double _y, SparseVector& t);
+};
 
 double LogLoss::getLoss(SparseVector& w, SparseVector& _x, double _y) {
-	return log(1.0 + exp(0 - _y * _x.dot(w)));
+	return log(1.0 + exp((1 - 2 *_y) * _x.dot(w)));
 }
 
 double LogLoss::getFirstDeri(SparseVector& w, SparseVector& _x, double _y) {
-    return -_y / (1.0 + exp(_y * _x.dot(w)))
+    return (1 - 2 *_y) / (1.0 + exp((1 - 2 *_y) * _x.dot(w)));
 }
 
 double LogLoss::getFirstDeri(double prediction, double _y) {
-    return -_y / (1.0 + exp(_y * prediction))
+    return (1 - 2 *_y) / (1.0 + exp((1 - 2 *_y) * prediction));
 }
 
 SparseVector* LogLoss::getGradient(SparseVector& w, SparseVector& _x, double _y) {
 	SparseVector* t = new SparseVector();
 	for (int i = 0; i < _x.size(); ++i) {
-        t->addItem(_x[i], getFirstDeri(w, _x, _y) * _x.getVal(_x[i]));
+        t->addItem(_x[i], getFirstDeri(w, _x, _y));
 	}
 	return t;
 }
 
-SparseVector* LogLoss::getGradient(double prediction, SparseVector& _x double _y) {
+SparseVector* LogLoss::getGradient(double prediction, SparseVector& _x, double _y) {
     SparseVector* t = new SparseVector();
     for (int i = 0; i < _x.size(); ++i) {
-        t->addItem(_x[i], getFirstDeri(prediction, _y) * _x.getVal(_x[i]));
+        t->addItem(_x[i], getFirstDeri(prediction, _y));
     }
     return t;
 }
 
-void LogLoss::updateGradient(double prediction, SparseVector& _x double _y, SparseVector& t) {
+void LogLoss::updateGradient(double prediction, SparseVector& _x, double _y, SparseVector& t) {
     for (int i = 0; i < _x.size(); ++i) {
-        t->addOrUpdate(_x[i], getFirstDeri(prediction, _y) * _x.getVal(_x[i]));
+        t.addOrUpdate(_x[i], getFirstDeri(prediction, _y));
     }
 }
 
@@ -197,6 +204,8 @@ class LBFGS {
 		float stopGrad;
 		Loss& loss;
 		SparseVector* lastGrad;
+        SparseVector* grad;
+        SparseVector* direction;
 		double stepSize;
         vector<Example*>& examples;
 		int m;
@@ -209,61 +218,82 @@ class LBFGS {
 		void updateST(SparseVector* _s, SparseVector* _t);
 		SparseVector* getDirection(SparseVector& q);
         void predict();
-        void getGradient();
+        SparseVector* getGradient();
+        void stepForward();
 	public:
-		SparseVector weight;
-		LBFGS(Loss& _loss, vector<Example*>& _examples): loss(_loss),  examples(_examples) {
+		SparseVector& weight;
+		LBFGS(Loss& _loss, vector<Example*>& _examples, SparseVector& _weight): loss(_loss),  examples(_examples), weight(_weight) {
             m = 15;
-			weight = SparseVector();
 			alpha = (double*) malloc(sizeof(double) * m);
 			rho = (double*) malloc(sizeof(double) * m);
 			s = new LoopArray(m);
 			t = new LoopArray(m);
 			stepSize = 0.05;
-			stopGrad = 0.000001;
-            predict();
+			stopGrad = 0.0001;
+            lastGrad = new SparseVector();
 		};
 		bool learn();
+        void init();
 };
 
 void LBFGS::predict() {
-    for(Example* example : example) {
+    for(Example* example : examples) {
         example->prediction = example->features.dot(weight);
     }
 }
 
-void LBFGS::getGradient() {
-    for(Example* example : example) {
-        loss.updateGradient(example->prediction, example->features, example.label, lastGrad);
+SparseVector* LBFGS::getGradient() {
+    grad = new SparseVector();
+    for(Example* example : examples) {
+        loss.updateGradient(example->prediction, example->features, example->label, *grad);
     }
+    return grad;
 }
 
-bool LBFGS::learn(Example* example) {
-    int start_time = clock();
-    predict();
-    lastGrad = loss.getGradient(example->prediction, x, y);
+bool LBFGS::learn() {
+    //int start_time = clock();
+    //lastGrad = loss.getGradient(example->prediction, x, y);
     //for(Example* example : examples) {
-        runARound(example);
+    stepForward();
+    predict();
+    getDirection(*lastGrad);
+    //cout << "\tdirection is: \n";
+    //direction->output();
+    runARound();
     //}
-    free(lastGrad);
-    ROUND += (clock() - start_time)/(double)CLOCKS_PER_SEC;
-//    if(norm < stopGrad) {
-//        cout << "Reach the gap  " << norm << endl;
-//        return false;
-//    }
+    //free(lastGrad);
+    //ROUND += (clock() - start_time)/(double)CLOCKS_PER_SEC;
+    double norm = lastGrad->norm();
+    //cout << "norm: " << norm << endl;
+    if(norm < stopGrad) {
+        cout << "Reach the gap  " << norm << endl;
+        return false;
+    }
     return true;
 }
 
-void LBFGS::runARound(Example* example) {
-    SparseVector* direction = getDirection(*lastGrad);
+void LBFGS::init() {
+    cout << "lbfgs init" << endl;
+    predict();
+    lastGrad = getGradient();
+    getDirection(*lastGrad);
+    //lastGrad->output();
+}
+
+void LBFGS::stepForward() {
+    weight.pax(stepSize, *direction);
+}
+
+void LBFGS::runARound() {
+    //direction = getDirection(*lastGrad);
 	//  weight = weight - direction * stepSize;
 	//cblas_daxpy(featureSize, 0 - stepSize, direction, 1, weight, 1); // weight will be updated here.
-    weight.pax(stepSize, *direction);
+    //weight.pax(stepSize, *direction);
 	// s = thisW - lastW = -direction * step
 	//cblas_dscal(featureSize, 0 - stepSize, direction, 1); // direction will be s.
     direction->scal(stepSize);
 	SparseVector* s = direction;
-	SparseVector* grad = loss.getGradient(example->prediction, x, y);
+	getGradient();
 	// grad = grad - lastGrad, lastGrad = lastGrad + grad
 	//cblas_daxpy(featureSize, -1, lastGrad, 1, grad, 1);
     grad->pax(-1, *lastGrad);
@@ -271,12 +301,13 @@ void LBFGS::runARound(Example* example) {
     lastGrad->pax(1, *grad);
 	// grad = grad - lastGrad grad will be y
 	SparseVector* y = grad;
-    //if(y->dot(*s) > 0.0000001) {
+    if(y->dot(*s) > 0.0000001) {
 	    updateST(s, y);
 	    //H = cblas_ddot(featureSize, y, 1, s, 1) / cblas_ddot(featureSize, y, 1, y, 1);
         H = s->dot(*y) / y->dot(*y);
-    //}
+    }
 }
+
 
 SparseVector* LBFGS::getDirection(SparseVector& qq) {
 	// two loop
@@ -317,6 +348,7 @@ SparseVector* LBFGS::getDirection(SparseVector& qq) {
     end = clock();
     DIRE_PH3 += (end - start_time)/(double)CLOCKS_PER_SEC;
     //cout << q->size() << endl;
+    direction = q;
 	return q;
 }
 
@@ -354,12 +386,13 @@ int getIndex(string item) {
 
 bool getNextXY(SparseVector& x, double& y, ifstream& fo, vector<string>& v) {
     if(fo.eof()) {
-        cout << "reach the file end." << endl;
+        cout << "reach the file end.1" << endl;
         return false;
     }
     string str;
     getline(fo, str);
     if(str.length() < 2) {
+        cout << "reach the file end.2" << endl;
         return false;
     }
     v.clear();
@@ -385,7 +418,7 @@ void outputAcu(LBFGS& LBFGS, LogLoss& ll) {
     int count1_shot = 0;
     while (getNextXY(xx, yy, fo, v)) {
         allLoss += ll.getLoss(LBFGS.weight, xx, yy);
-        double val = ll.getVal(LBFGS.weight, xx);
+        double val = 0;// ll.getVal(LBFGS.weight, xx);
         if(yy == 1) {
             ++count1;
         }
@@ -407,15 +440,15 @@ void outputAcu(LBFGS& LBFGS, LogLoss& ll) {
     LBFGS.weight.saveToFile();
 }
 
-void loadExamples(vector<Example*>& examples, SparseVector& weight) {
+void loadExamples(vector<Example*>& examples) {
     ifstream fo;
-    fo.open("/root/liangchenye/mine/MachineLearning/lbfgs/in2-2.txt");
+    fo.open("in2-2.txt");
     SparseVector xx;
     double yy;
     vector<string> v;
     while(getNextXY(xx, yy, fo, v)) {
         Example* example = new Example(xx);
-        example->prediction = xx.dot(weight);
+        //example->prediction = xx.dot(weight);
         example->label = yy;
         examples.push_back(example);
     }
@@ -424,36 +457,45 @@ void loadExamples(vector<Example*>& examples, SparseVector& weight) {
 
 void test() {
     SparseVector weight;
-    Example* examples = loadExamples(weight);
+    cout << "load examples." << endl;
+    vector<Example*> examples;
+    loadExamples(examples);
+    printf("example size is : %ld\n", examples.size());
     LogLoss ll;
-	LBFGS LBFGS(ll, examples);
-    bool flag = false;
+	LBFGS lbfgs(ll, examples, weight);
+    //bool flag = false;
     cout << "begin learn" << endl;
-    int start_time = clock();
-    int loop = 0;
+//    int start_time = clock();
+  //  int loop = 0;
 //    for(int i = 0; i < 5; ++i) {
-        while (getNextXY(xx, yy, fo, v)) {
-            ++loop;
-            ++GLO;
-            if(loop % 1000 == 0) {
-                cout << loop << endl;
-                printf("DIRE_PH1: %f\t DIRE2: %f\t DIRE3: %f\t ROUND: %f\n", DIRE_PH1, DIRE_PH2, DIRE_PH3, ROUND);
-                DIRE = 0;
-                ROUND = 0;
-                DIRE_PH1 = 0;
-                DIRE_PH2 = 0;
-                DIRE_PH3 = 0;
-            }
-	        if(!LBFGS.learn()) {
-                flag = true;
-                break;
-            }
-        }
+        //while (getNextXY(xx, yy, fo, v)) {
+        //    ++loop;
+        //    ++GLO;
+        //    if(loop % 1000 == 0) {
+        //        cout << loop << endl;
+    lbfgs.init();
+    //for(int i = 0; i < 20; ++i) {
+    	lbfgs.learn();
+    //}
+//    cout << "My model is: \n";
+//    weight.output();
+//                printf("DIRE_PH1: %f\t DIRE2: %f\t DIRE3: %f\t ROUND: %f\n", DIRE_PH1, DIRE_PH2, DIRE_PH3, ROUND);
+//                DIRE = 0;
+//                ROUND = 0;
+//                DIRE_PH1 = 0;
+//                DIRE_PH2 = 0;
+//                DIRE_PH3 = 0;
+          //  }
+	        //if(!LBFGS.learn()) {
+              //  flag = true;
+                //break;
+            //}
+        //}
     //    if(flag) break;
   //  }
-    printf("Learn finished run %d rounds.", --loop);
-    cout << "Used time: " << (clock() - start_time)/double(CLOCKS_PER_SEC)*1000 << endl; 
-    outputAcu(LBFGS, ll);
+//    printf("Learn finished run %d rounds.", --loop);
+  //  cout << "Used time: " << (clock() - start_time)/double(CLOCKS_PER_SEC)*1000 << endl; 
+    //outputAcu(LBFGS, ll);
 //    free(xx[0]);
 //    free(xx);
 //    free(yy);
@@ -476,7 +518,9 @@ void test2() {
 }
 
 int main(int argc, char* argv[]) {
+    int start_time = clock();
     test();
     cout << "finish program." << endl;
+    cout << "Used time: " << (clock() - start_time)/double(CLOCKS_PER_SEC) << endl; 
 	return 0;
 }
