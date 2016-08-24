@@ -476,15 +476,18 @@ void loadExamples(vector<Example*>& examples) {
 void test() {
     cout << "load examples." << endl;
     vector<Example*> examples;
+    int start = clock();
     loadExamples(examples);
+    cout << "load examples cost " << (clock() - start)/(double)CLOCKS_PER_SEC << endl;
     printf("example size is : %ld\n", examples.size());
+    printf("table size is : %ld\n", table.size());
     double* weight = (double*) malloc(sizeof(double) * table.size());
     LogLoss ll;
 	LBFGS lbfgs(ll, examples, weight);
     cout << "begin learn" << endl;
     int start_time = clock();
     lbfgs.init();
-    for(int i = 0; i < 2; ++i) {
+    for(int i = 0; i < 20; ++i) {
     	lbfgs.learn();
         cout << endl;
     }
