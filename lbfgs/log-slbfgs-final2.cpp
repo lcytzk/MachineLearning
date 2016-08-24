@@ -330,7 +330,7 @@ void outputAcu(SLBFGS& slbfgs, LogLoss& ll) {
     SparseVector xx;
     double yy;
     ifstream fo;
-    fo.open("/root/liangchenye/mine/MachineLearning/lbfgs/in2-2.txt");
+    fo.open("in2-2.txt");
     double allLoss = 0;
     int count = 0;
     int sampleSize = 0;
@@ -373,7 +373,7 @@ void test() {
     int start_time = clock();
     int loop = 0;
 //    for(int i = 0; i < 5; ++i) {
-        fo.open("/root/liangchenye/mine/MachineLearning/lbfgs/in2-2.txt");
+        fo.open("in2-2.txt");
         while (getNextXY(xx, yy, fo, v)) {
             ++loop;
             ++GLO;
