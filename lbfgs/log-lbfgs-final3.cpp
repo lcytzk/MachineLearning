@@ -297,6 +297,7 @@ void LBFGS::init() {
 }
 
 void LBFGS::stepForward() {
+    printf("weight: %d\tdirec:%d\n", weight.size(), direction->size());
     weight.pax(stepSize, *direction);
 }
 
@@ -317,11 +318,11 @@ void LBFGS::runARound() {
     lastGrad->pax(1, *grad);
 	// grad = grad - lastGrad grad will be y
 	SparseVector* y = grad;
-    if(y->dot(*s) > 0.0000001) {
+//    if(y->dot(*s) > 0.0000001) {
 	    updateST(s, y);
 	    //H = cblas_ddot(featureSize, y, 1, s, 1) / cblas_ddot(featureSize, y, 1, y, 1);
         H = s->dot(*y) / y->dot(*y);
-    }
+  //  }
 }
 
 
@@ -329,6 +330,7 @@ SparseVector* LBFGS::getDirection(SparseVector& qq) {
 	// two loop
     int start_time = clock();
 	SparseVector* q = new SparseVector(qq);
+    printf("q size: %d\n", q->size());
     int end = clock();
     DIRE_PH1 += (end - start_time)/double(CLOCKS_PER_SEC);
     start_time = end;
@@ -490,9 +492,10 @@ void test() {
         //    if(loop % 1000 == 0) {
         //        cout << loop << endl;
     lbfgs.init();
-    //for(int i = 0; i < 20; ++i) {
+    for(int i = 0; i < 20; ++i) {
     	lbfgs.learn();
-    //}
+        cout << endl;
+    }
 //    cout << "My model is: \n";
 //    weight.output();
 //                printf("DIRE_PH1: %f\t DIRE2: %f\t DIRE3: %f\t ROUND: %f\n", DIRE_PH1, DIRE_PH2, DIRE_PH3, ROUND);
@@ -510,7 +513,7 @@ void test() {
     //    if(flag) break;
   //  }
 //    printf("Learn finished run %d rounds.", --loop);
-    cout << "One pass used time: " << (clock() - start_time)/double(CLOCKS_PER_SEC)*1000 << endl; 
+    cout << "One pass used time: " << (clock() - start_time)/double(CLOCKS_PER_SEC) << endl; 
     //outputAcu(LBFGS, ll);
 //    free(xx[0]);
 //    free(xx);
