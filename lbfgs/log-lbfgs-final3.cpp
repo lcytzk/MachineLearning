@@ -70,6 +70,9 @@ double SparseVector::norm() {
 
 double SparseVector::dot(SparseVector& x) {
     double res = 0;
+    if (size() > x.size()) {
+        return x.dot(*this);
+    }
     for(int i = 0; i < indexs.size(); ++i) {
         res += index2value[indexs[i]] * x.getVal(indexs[i]);
     }
@@ -254,12 +257,25 @@ bool LBFGS::learn() {
     //int start_time = clock();
     //lastGrad = loss.getGradient(example->prediction, x, y);
     //for(Example* example : examples) {
+    int start = clock();
     stepForward();
+    int end = clock();
+    printf("step forward used: %f\n", (end - start)/(double) CLOCKS_PER_SEC);
+    start = end;
     predict();
+    end = clock();
+    printf("predict used: %f\n", (end - start)/(double) CLOCKS_PER_SEC);
+    start = end;
     getDirection(*lastGrad);
+    end = clock();
+    printf("Get direction used: %f\n", (end - start)/(double) CLOCKS_PER_SEC);
+    start = end;
     //cout << "\tdirection is: \n";
     //direction->output();
     runARound();
+    end = clock();
+    printf("run a round used: %f\n", (end - start)/(double) CLOCKS_PER_SEC);
+    start = end;
     //}
     //free(lastGrad);
     //ROUND += (clock() - start_time)/(double)CLOCKS_PER_SEC;
