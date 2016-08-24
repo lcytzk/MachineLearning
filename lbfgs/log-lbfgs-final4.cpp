@@ -38,6 +38,10 @@ double dot(double* x, double* y) {
     return res;
 }
 
+double norm(double* x) {
+    return sqrt(dot(x, x));
+}
+
 void scal(double* direction, double stepSize) {
     for(int i = 0; i < table.size(); ++i) {
         direction[i] *= stepSize;
@@ -259,11 +263,11 @@ bool LBFGS::learn() {
     predict();
     cal_and_save_ST();
     getDirection(lastGrad);
-//    double norm = lastGrad->norm();
-  //  if(norm < stopGrad) {
-    //    cout << "Reach the gap  " << norm << endl;
-      //  return false;
-    //}
+    double grad_norm = norm(lastGrad);
+    if(grad_norm < stopGrad) {
+        cout << "Reach the gap  " << norm << endl;
+        return false;
+    }
     return true;
 }
 
@@ -298,6 +302,7 @@ void LBFGS::cal_and_save_ST() {
     //H = s->dot(*y) / y->dot(*y);
     //outputModel(y, table.size());
     //cout << "y dot y   " << dot(y,y) << endl;
+    //cout << "ss dot y   " << dot(ss,y) << endl;
     H = dot(ss, y) / dot(y, y);
     //cout << "HHHHHHHHHHH   " << H << endl;
 }
@@ -305,7 +310,8 @@ void LBFGS::cal_and_save_ST() {
 double* LBFGS::getDirection(double* qq) {
 	// two loop
 	double* q = (double*) malloc(table.size() * sizeof(double));
-    memcpy(q, qq, table.size());
+    memcpy(q, qq, table.size() * sizeof(double));
+    //outputModel(q, table.size());
 	int k = min(m, s->size());
     if(k > 0) rho[k-1] = 1.0 / dot((*s)[k-1], (*t)[k-1]);
 	for (int i = k-1; i >= 0; --i) {
@@ -324,6 +330,7 @@ double* LBFGS::getDirection(double* qq) {
         }
     }
     direction = q;
+    //outputModel(direction, table.size());
 	return q;
 }
 
@@ -444,11 +451,14 @@ void test() {
     lbfgs.init();
     //outputModel(weight, table.size());
     //outputPredictions(examples);
-    for(int i = 0; i < 3; ++i) {
-    	lbfgs.learn();
+    for(int i = 0; i < 100000; ++i) {
+    	if(!lbfgs.learn()) {
+            break;
+        }
         //outputModel(weight, table.size());
         //outputPredictions(examples);
     }
+    cout << "NORM: " << norm(lbfgs.lastGrad) << endl; 
     cout << "One pass used time: " << (clock() - start_time)/double(CLOCKS_PER_SEC) << endl; 
     outputModel(weight, table.size());
     outputAcu(lbfgs, ll);
