@@ -264,6 +264,7 @@ bool LBFGS::learn() {
     cal_and_save_ST();
     getDirection(lastGrad);
     double grad_norm = norm(lastGrad);
+    cout << "norm   " << grad_norm << endl;
     if(grad_norm < stopGrad) {
         cout << "Reach the gap  " << norm << endl;
         return false;
@@ -447,21 +448,27 @@ void test() {
     LogLoss2 ll;
 	LBFGS lbfgs(ll, examples, weight);
     cout << "begin learn" << endl;
-    int start_time = clock();
+    start = clock();
     lbfgs.init();
+    int end = clock();
+    printf("init used %f\n", (end - start)/(double)CLOCKS_PER_SEC);
+    start = end;
     //outputModel(weight, table.size());
     //outputPredictions(examples);
     for(int i = 0; i < 100000; ++i) {
     	if(!lbfgs.learn()) {
             break;
         }
+        end = clock();
+        printf("round %d used %f\n", i, (end - start)/(double)CLOCKS_PER_SEC);
+        start = end;
         //outputModel(weight, table.size());
         //outputPredictions(examples);
     }
     cout << "NORM: " << norm(lbfgs.lastGrad) << endl; 
-    cout << "One pass used time: " << (clock() - start_time)/double(CLOCKS_PER_SEC) << endl; 
-    outputModel(weight, table.size());
-    outputAcu(lbfgs, ll);
+    //cout << "One pass used time: " << (clock() - start)/double(CLOCKS_PER_SEC) << endl; 
+//    outputModel(weight, table.size());
+//    outputAcu(lbfgs, ll);
 }
 
 int main(int argc, char* argv[]) {
