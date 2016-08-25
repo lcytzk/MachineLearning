@@ -105,6 +105,7 @@ class LoopArray {
 class Loss {
 	public:
 		virtual double getLoss(double* w, vector<int>& _x, double _y) = 0;
+        virtual double getVal(double* w, vector<int>& _x) = 0;
         virtual double getFirstDeri(double* w, vector<int>& _x, double _y) = 0;
         virtual double getFirstDeri(double prediction, double _y) = 0;
 		virtual double* getGradient(double* w, vector<int>& _x, double _y) = 0;
@@ -115,12 +116,17 @@ class Loss {
 class LogLoss : public Loss {
     public:
         double getLoss(double* w, vector<int>& _x, double _y);
+        double getVal(double* w, vector<int>& _x);
         double getFirstDeri(double* w, vector<int>& _x, double _y);
         double getFirstDeri(double prediction, double _y);
         double* getGradient(double* w, vector<int>& _x, double _y);
         double* getGradient(double prediction, vector<int>& _x, double _y);
         void updateGradient(double prediction, vector<int>& _x, double _y, double* t);
 };
+
+double LogLoss::getVal(double* w, vector<int>& _x) {
+    return dot(_x, w);
+}
 
 double LogLoss::getLoss(double* w, vector<int>& _x, double _y) {
 	return log(1 + exp((1 - 2 *_y) * dot(_x, w)));
@@ -152,7 +158,65 @@ double* LogLoss::getGradient(double prediction, vector<int>& _x, double _y) {
 
 void LogLoss::updateGradient(double prediction, vector<int>& _x, double _y, double* t) {
     for (int i = 0; i < _x.size(); ++i) {
-        t[_x[i]] += getFirstDeri(prediction, _y);
+        t[_x[i]] += getFirstDeri(prediction, _y) / table.size();
+    }
+}
+
+
+class LogLoss2 : public Loss {
+    public:
+        double getLoss(double* w, vector<int>& _x, double _y);
+        double getVal(double* w, vector<int>& _x);
+        double getFirstDeri(double* w, vector<int>& _x, double _y);
+        double getFirstDeri(double prediction, double _y);
+        double* getGradient(double* w, vector<int>& _x, double _y);
+        double* getGradient(double prediction, vector<int>& _x, double _y);
+        void updateGradient(double prediction, vector<int>& _x, double _y, double* t);
+};
+
+double LogLoss2::getVal(double* w, vector<int>& _x) {
+    return 1 / (1 + exp(-dot(_x, w)));
+}
+
+double LogLoss2::getLoss(double* w, vector<int>& _x, double _y) {
+    double pre = getVal(w, _x);
+    if (_y == 1) {
+        return log(pre);
+    } else {
+        return log(1 - pre);
+    }
+}
+
+double LogLoss2::getFirstDeri(double* w, vector<int>& _x, double _y) {
+    if(_y == 1) {
+
+    }
+    return (1 - 2 *_y) / (1.0 + exp((2 *_y - 1) * dot(_x, w)));
+}
+
+double LogLoss2::getFirstDeri(double prediction, double _y) {
+    return (1 - 2 *_y) / (1.0 + exp((2 *_y - 1) * prediction));
+}
+
+double* LogLoss2::getGradient(double* w, vector<int>& _x, double _y) {
+    double* t = (double*) malloc(sizeof(double) * table.size());
+    for (int i = 0; i < _x.size(); ++i) {
+        t[_x[i]] = getFirstDeri(w, _x, _y);
+    }
+    return t;
+}
+
+double* LogLoss2::getGradient(double prediction, vector<int>& _x, double _y) {
+    double* t = (double*) malloc(sizeof(double) * table.size());
+    for (int i = 0; i < _x.size(); ++i) {
+        t[_x[i]] = getFirstDeri(prediction, _y);
+    }
+    return t;
+}
+
+void LogLoss2::updateGradient(double prediction, vector<int>& _x, double _y, double* t) {
+    for (int i = 0; i < _x.size(); ++i) {
+        t[_x[i]] += (_y - prediction) / table.size();
     }
 }
 
@@ -185,8 +249,8 @@ class LBFGS {
 			rho = (double*) malloc(sizeof(double) * m);
 			s = new LoopArray(m);
 			t = new LoopArray(m);
-			stepSize = 0.1;
-			stopGrad = 0.0001;
+			stepSize = 0.05;
+			stopGrad = 0.001;
 		};
 		bool learn();
         void init();
@@ -194,7 +258,8 @@ class LBFGS {
 
 void LBFGS::predict() {
     for(Example* example : examples) {
-        example->prediction = dot(example->features, weight);
+        // example->prediction = dot(example->features, weight);
+        example->prediction = loss.getVal(weight, example->features);
     }
 }
 
@@ -337,7 +402,7 @@ bool getNextXY(vector<int>& x, double& y, ifstream& fo, vector<string>& v) {
     return true;
 }
 
-void outputAcu(LBFGS& LBFGS, Loss& ll) {
+void outputAcu(LBFGS& lbfgs, Loss& ll) {
     vector<int> xx;
     double yy;
     ifstream fo;
@@ -349,13 +414,17 @@ void outputAcu(LBFGS& LBFGS, Loss& ll) {
     int count1 = 0;
     int count1_shot = 0;
     while (getNextXY(xx, yy, fo, v)) {
-        allLoss += ll.getLoss(LBFGS.weight, xx, yy);
+        double loss = ll.getLoss(lbfgs.weight, xx, yy);
+        cout << "prediction  " << ll.getVal(lbfgs.weight, xx) <<endl;
+        allLoss += loss;
+        cout << loss << endl;
         if(yy == 1) {
             ++count1;
         }
         ++sampleSize;
     }
     fo.close();
+    cout << "avg sum: " << allLoss << endl;
     cout << "avg loss: " << allLoss / sampleSize << endl;
     cout << "count percent: " << ((double) count) / sampleSize << endl;
     cout << "count: " << count << endl;
@@ -396,7 +465,7 @@ void test() {
     printf("example size is : %ld\n", examples.size());
     printf("table size is : %ld\n", table.size());
     double* weight = (double*) calloc(table.size(), sizeof(double));
-    LogLoss ll;
+    LogLoss2 ll;
 	LBFGS lbfgs(ll, examples, weight);
     cout << "begin learn" << endl;
     start = clock();
@@ -406,21 +475,24 @@ void test() {
     start = end;
     //outputModel(weight, table.size());
     //outputPredictions(examples);
+    bool flag = false;
     for(int i = 0; i < 100000; ++i) {
     	if(!lbfgs.learn()) {
-            printf("Run %d rounds\n", i);
-            break;
+            flag = true;
         }
         end = clock();
-        printf("round %d used %f\n", i, (end - start)/(double)CLOCKS_PER_SEC);
+        printf("round %d used %f\n", i+1, (end - start)/(double)CLOCKS_PER_SEC);
         start = end;
+        if (flag) {
+            printf("Round %d. Stop here.\n", i+1);
+            break;
+        }
         //outputModel(weight, table.size());
         //outputPredictions(examples);
     }
-    cout << "NORM: " << norm(lbfgs.lastGrad) << endl; 
     //cout << "One pass used time: " << (clock() - start)/double(CLOCKS_PER_SEC) << endl; 
-//    outputModel(weight, table.size());
-//    outputAcu(lbfgs, ll);
+    outputModel(weight, table.size());
+    outputAcu(lbfgs, ll);
 }
 
 int main(int argc, char* argv[]) {
