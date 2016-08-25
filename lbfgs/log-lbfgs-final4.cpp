@@ -123,15 +123,15 @@ class LogLoss : public Loss {
 };
 
 double LogLoss::getLoss(double* w, vector<int>& _x, double _y) {
-	return log(1.0 + exp((1 - 2 *_y) * dot(_x, w)));
+	return log(1 + exp((1 - 2 *_y) * dot(_x, w)));
 }
 
 double LogLoss::getFirstDeri(double* w, vector<int>& _x, double _y) {
-    return (1 - 2 *_y) / (1.0 + exp((1 - 2 *_y) * dot(_x, w)));
+    return (1 - 2 *_y) / (1.0 + exp((2 *_y - 1) * dot(_x, w)));
 }
 
 double LogLoss::getFirstDeri(double prediction, double _y) {
-    return (1 - 2 *_y) / (1.0 + exp((1 - 2 *_y) * prediction));
+    return (1 - 2 *_y) / (1.0 + exp((2 *_y - 1) * prediction));
 }
 
 double* LogLoss::getGradient(double* w, vector<int>& _x, double _y) {
@@ -152,56 +152,7 @@ double* LogLoss::getGradient(double prediction, vector<int>& _x, double _y) {
 
 void LogLoss::updateGradient(double prediction, vector<int>& _x, double _y, double* t) {
     for (int i = 0; i < _x.size(); ++i) {
-        t[_x[i]] += getFirstDeri(prediction, _y) / table.size();
-    }
-}
-
-class LogLoss2 : public Loss {
-    public:
-        double getLoss(double* w, vector<int>& _x, double _y);
-        double getLoss(double prediction, double _y);
-        double getFirstDeri(double* w, vector<int>& _x, double _y);
-        double getFirstDeri(double prediction, double _y);
-        double* getGradient(double* w, vector<int>& _x, double _y);
-        double* getGradient(double prediction, vector<int>& _x, double _y);
-        void updateGradient(double prediction, vector<int>& _x, double _y, double* t);
-};
-
-double LogLoss2::getLoss(double* w, vector<int>& _x, double _y) {
-    return _y - 1.0 / (1.0 + exp(0 - dot(_x, w)));
-}
-
-double LogLoss2::getLoss(double prediction, double _y) {
-    return _y - 1.0 / (1.0 + exp(0 - prediction));
-}
-
-double LogLoss2::getFirstDeri(double* w, vector<int>& _x, double _y) {
-    return (1 - 2 *_y) / (1.0 + exp((1 - 2 *_y) * dot(_x, w)));
-}
-
-double LogLoss2::getFirstDeri(double prediction, double _y) {
-    return (1 - 2 *_y) / (1.0 + exp((1 - 2 *_y) * prediction));
-}
-
-double* LogLoss2::getGradient(double* w, vector<int>& _x, double _y) {
-    double* t = (double*) malloc(sizeof(double) * table.size());
-    for (int i = 0; i < _x.size(); ++i) {
-        t[_x[i]] = getFirstDeri(w, _x, _y);
-    }
-    return t;
-}
-
-double* LogLoss2::getGradient(double prediction, vector<int>& _x, double _y) {
-    double* t = (double*) malloc(sizeof(double) * table.size());
-    for (int i = 0; i < _x.size(); ++i) {
-        t[_x[i]] = getFirstDeri(prediction, _y);
-    }
-    return t;
-}
-
-void LogLoss2::updateGradient(double prediction, vector<int>& _x, double _y, double* t) {
-    for (int i = 0; i < _x.size(); ++i) {
-        t[_x[i]] += getLoss(prediction, _y) / table.size();
+        t[_x[i]] += getFirstDeri(prediction, _y);
     }
 }
 
@@ -234,7 +185,7 @@ class LBFGS {
 			rho = (double*) malloc(sizeof(double) * m);
 			s = new LoopArray(m);
 			t = new LoopArray(m);
-			stepSize = 0.05;
+			stepSize = 0.1;
 			stopGrad = 0.0001;
 		};
 		bool learn();
@@ -265,7 +216,7 @@ bool LBFGS::learn() {
     getDirection(lastGrad);
     double grad_norm = norm(lastGrad);
     if(grad_norm < stopGrad) {
-        cout << "Reach the gap  " << norm << endl;
+        cout << "Reach the gap  " << grad_norm << endl;
         return false;
     }
     return true;
@@ -444,7 +395,7 @@ void test() {
     printf("example size is : %ld\n", examples.size());
     printf("table size is : %ld\n", table.size());
     double* weight = (double*) calloc(table.size(), sizeof(double));
-    LogLoss2 ll;
+    LogLoss ll;
 	LBFGS lbfgs(ll, examples, weight);
     cout << "begin learn" << endl;
     int start_time = clock();
@@ -453,6 +404,7 @@ void test() {
     //outputPredictions(examples);
     for(int i = 0; i < 100000; ++i) {
     	if(!lbfgs.learn()) {
+            printf("Run %d rounds\n", i);
             break;
         }
         //outputModel(weight, table.size());
