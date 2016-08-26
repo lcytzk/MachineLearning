@@ -17,6 +17,7 @@ double ROUND = 0;
 double DIRE_PH1 = 0;
 double  DIRE_PH2 = 0;
 double DIRE_PH3 = 0;
+double STEP_SIZE = 2;
 
 map<string,int> table;
 
@@ -230,8 +231,6 @@ class LBFGS {
 		Loss& loss;
         vector<Example*>& examples;
 		int m;
-        double lossSum;
-        double preLossSum;
         double wolfe1Bound =  0.01;
 		double* alpha;
 		double* rho;
@@ -246,19 +245,22 @@ class LBFGS {
         void stepForward();
         void stepBackward();
         double evalWolfe();
+        bool hasBack = false;
 	public:
 		double* weight;
         double* lastGrad;
         double* grad;
         double* direction;
 		double stepSize;
+        double lossSum;
+        double preLossSum;
 		LBFGS(Loss& _loss, vector<Example*>& _examples, double* _weight): loss(_loss),  examples(_examples), weight(_weight) {
             m = 15;
 			alpha = (double*) malloc(sizeof(double) * m);
 			rho = (double*) malloc(sizeof(double) * m);
 			s = new LoopArray(m);
 			t = new LoopArray(m);
-			stepSize = 2;
+			stepSize = STEP_SIZE;
 			stopGrad = 0;
 		};
 		bool learn();
@@ -297,7 +299,7 @@ bool LBFGS::learn() {
     predict();
 //    double wolfe1 = evalWolfe();
 //    //cout << "lossSum and preLossSum: \t" << lossSum << endl;
-    printf("lossSum: %f\t preLossSum: %f\n", lossSum/table.size(), preLossSum/table.size());
+    printf("lossSum: %f\t preLossSum: %f  \tdirMag: %f\n", lossSum/table.size(), preLossSum/table.size(), norm(direction));
 //    if(wolfe1 == 0 || isnan(wolfe1)) {
 //        cout << "wolfe1 is nan  " << wolfe1 << endl;
 //        return false;
@@ -306,14 +308,20 @@ bool LBFGS::learn() {
     //if(lossSum > preLossSum || wolfe1 < wolfe1Bound) {
     if(lossSum > preLossSum) {
         stepBackward();
+        hasBack = true;
         stepSize /= 2;
         return true;
     }
-    if(lossSum/preLossSum > 0.9991) {
+    if(lossSum/preLossSum > 0.999) {
         printf("Decrease in loss in 0.1%% so stop.\n");
         return false;
     }
-    stepSize = 2;
+    // if(hasBack) {
+    //     hasBack = false;
+    //     stepSize *= 2;
+    // }
+    // stepSize =((stepSize + 0.1) > 1) ? stepSize : stepSize + 0.1;
+    stepSize = STEP_SIZE;
     getGradient();
     float grad_norm = norm(grad);
     cout << "norm   " << grad_norm << endl;
@@ -402,19 +410,21 @@ void LBFGS::updateST(double* _s, double* _t) {
 	t->appendAndRemoveFirstIfFull(_t);
 }
 
-void splitString(const std::string& s, std::vector<std::string>& v, const std::string& c) {
-  std::string::size_type pos1, pos2;
-  pos2 = s.find(c);
-  pos1 = 0;
-  while(std::string::npos != pos2)
-  {
-    v.push_back(s.substr(pos1, pos2-pos1));
- 
-    pos1 = pos2 + c.size();
-    pos2 = s.find(c, pos1);
-  }
-  if(pos1 != s.length())
-    v.push_back(s.substr(pos1));
+void splitString(string s, vector<string>& output, const char delimiter)
+{
+    size_t start=0;
+    size_t end=s.find_first_of(delimiter);
+    
+    while (end <= string::npos)
+    {
+        output.push_back(s.substr(start, end-start));
+
+        if (end == string::npos)
+            break;
+
+        start=end+1;
+        end = s.find_first_of(delimiter, start);
+    }
 }
 
 int getIndex(string item) {
@@ -439,7 +449,7 @@ bool getNextXY(vector<int>& x, double& y, ifstream& fo, vector<string>& v) {
         return false;
     }
     v.clear();
-    splitString(str, v, " ");
+    splitString(str, v, ' ');
     x.clear();
     y = (atoi(v[0].c_str()) == 1) ? 1.0 : 0;
     for(int i = 2; i < v.size(); ++i) {
@@ -452,7 +462,9 @@ void outputAcu(LBFGS& lbfgs, Loss& ll) {
     vector<int> xx;
     double yy;
     ifstream fo;
+    ofstream fw;
     fo.open("in2-2.txt");
+    fw.open("my_res");
     double allLoss = 0;
     int count = 0;
     int sampleSize = 0;
@@ -462,6 +474,7 @@ void outputAcu(LBFGS& lbfgs, Loss& ll) {
     while (getNextXY(xx, yy, fo, v)) {
         double loss = ll.getLoss(lbfgs.weight, xx, yy);
         //cout << "prediction  " << ll.getVal(lbfgs.weight, xx) <<endl;
+        double prediction1 = ll.getVal(lbfgs.weight, xx);
         double prediction = ll.getVal(lbfgs.weight, xx) > 0.5 ? 1 : 0;
         allLoss += loss;
         //cout << loss << endl;
@@ -474,9 +487,11 @@ void outputAcu(LBFGS& lbfgs, Loss& ll) {
                 ++count1_shot;
             }
         }
+        fw << prediction1 << "," << (yy == 1 ? 1 : -1) << endl;
         ++sampleSize;
     }
     fo.close();
+    fw.close();
     cout << "avg sum: " << allLoss << endl;
     cout << "avg loss: " << allLoss / sampleSize << endl;
     cout << "count percent: " << ((double) count) / sampleSize << endl;
@@ -533,12 +548,16 @@ void test() {
     	if(!lbfgs.learn()) {
             flag = true;
         }
-        end = clock();
-        printf("round %d used %f  stepSize is: %f\n", i+1, (end - start)/(double)CLOCKS_PER_SEC, lbfgs.stepSize);
-        start = end;
         if (flag) {
             printf("Round %d. Stop here.\n", i+1);
             break;
+        }
+        if(lbfgs.lossSum < lbfgs.preLossSum) {
+            end = clock();
+            printf("round %d used %f  stepSize is: %f\n", i+1, (end - start)/(double)CLOCKS_PER_SEC, lbfgs.stepSize);
+            start = end;
+        } else {
+            --i;
         }
         //outputModel(weight, table.size());
         //outputPredictions(examples);
