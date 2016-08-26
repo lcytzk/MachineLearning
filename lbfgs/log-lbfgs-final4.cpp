@@ -228,7 +228,6 @@ class LBFGS {
 	private:
 		double stopGrad;
 		Loss& loss;
-		double stepSize;
         vector<Example*>& examples;
 		int m;
         double lossSum;
@@ -252,13 +251,14 @@ class LBFGS {
         double* lastGrad;
         double* grad;
         double* direction;
+		double stepSize;
 		LBFGS(Loss& _loss, vector<Example*>& _examples, double* _weight): loss(_loss),  examples(_examples), weight(_weight) {
             m = 15;
 			alpha = (double*) malloc(sizeof(double) * m);
 			rho = (double*) malloc(sizeof(double) * m);
 			s = new LoopArray(m);
 			t = new LoopArray(m);
-			stepSize = 8;
+			stepSize = 2;
 			stopGrad = 0;
 		};
 		bool learn();
@@ -295,21 +295,25 @@ bool LBFGS::learn() {
     stepForward();
     preLossSum = lossSum;
     predict();
-    double wolfe1 = evalWolfe();
-    //cout << "lossSum and preLossSum: \t" << lossSum << endl;
-    printf("lossSum: %f\t preLossSum: %f\n", lossSum, preLossSum);
-    if(wolfe1 == 0 || isnan(wolfe1)) {
-        cout << "wolfe1 is nan  " << wolfe1 << endl;
-        return false;
-    }
-    cout << "wolfe1    " << wolfe1 << endl;
+//    double wolfe1 = evalWolfe();
+//    //cout << "lossSum and preLossSum: \t" << lossSum << endl;
+    printf("lossSum: %f\t preLossSum: %f\n", lossSum/table.size(), preLossSum/table.size());
+//    if(wolfe1 == 0 || isnan(wolfe1)) {
+//        cout << "wolfe1 is nan  " << wolfe1 << endl;
+//        return false;
+//    }
+//    cout << "wolfe1    " << wolfe1 << endl;
     //if(lossSum > preLossSum || wolfe1 < wolfe1Bound) {
     if(lossSum > preLossSum) {
         stepBackward();
         stepSize /= 2;
         return true;
     }
-    //stepSize = 1;
+    if(lossSum/preLossSum > 0.9991) {
+        printf("Decrease in loss in 0.1%% so stop.\n");
+        return false;
+    }
+    stepSize = 2;
     getGradient();
     float grad_norm = norm(grad);
     cout << "norm   " << grad_norm << endl;
@@ -457,11 +461,18 @@ void outputAcu(LBFGS& lbfgs, Loss& ll) {
     int count1_shot = 0;
     while (getNextXY(xx, yy, fo, v)) {
         double loss = ll.getLoss(lbfgs.weight, xx, yy);
-        cout << "prediction  " << ll.getVal(lbfgs.weight, xx) <<endl;
+        //cout << "prediction  " << ll.getVal(lbfgs.weight, xx) <<endl;
+        double prediction = ll.getVal(lbfgs.weight, xx) > 0.5 ? 1 : 0;
         allLoss += loss;
-        cout << loss << endl;
+        //cout << loss << endl;
+        if (prediction == yy) {
+            ++count;
+        }
         if(yy == 1) {
             ++count1;
+            if(prediction == yy) {
+                ++count1_shot;
+            }
         }
         ++sampleSize;
     }
@@ -523,7 +534,7 @@ void test() {
             flag = true;
         }
         end = clock();
-        printf("round %d used %f\n", i+1, (end - start)/(double)CLOCKS_PER_SEC);
+        printf("round %d used %f  stepSize is: %f\n", i+1, (end - start)/(double)CLOCKS_PER_SEC, lbfgs.stepSize);
         start = end;
         if (flag) {
             printf("Round %d. Stop here.\n", i+1);
@@ -533,7 +544,7 @@ void test() {
         //outputPredictions(examples);
     }
     //cout << "One pass used time: " << (clock() - start)/double(CLOCKS_PER_SEC) << endl; 
-    outputModel(weight, table.size());
+    //outputModel(weight, table.size());
     outputAcu(lbfgs, ll);
 }
 
