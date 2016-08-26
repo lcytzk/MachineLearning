@@ -38,7 +38,7 @@ double dot(double* x, double* y) {
     return res;
 }
 
-double norm(double* x) {
+float norm(double* x) {
     return sqrt(dot(x, x));
 }
 
@@ -104,6 +104,7 @@ class LoopArray {
 
 class Loss {
 	public:
+        virtual double getLoss(double prediction, double _y) = 0;
 		virtual double getLoss(double* w, vector<int>& _x, double _y) = 0;
         virtual double getVal(double* w, vector<int>& _x) = 0;
         virtual double getFirstDeri(double* w, vector<int>& _x, double _y) = 0;
@@ -115,6 +116,7 @@ class Loss {
 
 class LogLoss : public Loss {
     public:
+        double getLoss(double prediction, double _y);
         double getLoss(double* w, vector<int>& _x, double _y);
         double getVal(double* w, vector<int>& _x);
         double getFirstDeri(double* w, vector<int>& _x, double _y);
@@ -130,6 +132,11 @@ double LogLoss::getVal(double* w, vector<int>& _x) {
 
 double LogLoss::getLoss(double* w, vector<int>& _x, double _y) {
 	return log(1 + exp((1 - 2 *_y) * dot(_x, w)));
+}
+
+
+double LogLoss::getLoss(double prediction, double _y) {
+    return log(1 + exp((1 - 2 *_y) * prediction));
 }
 
 double LogLoss::getFirstDeri(double* w, vector<int>& _x, double _y) {
@@ -165,6 +172,7 @@ void LogLoss::updateGradient(double prediction, vector<int>& _x, double _y, doub
 
 class LogLoss2 : public Loss {
     public:
+        double getLoss(double prediction, double _y);
         double getLoss(double* w, vector<int>& _x, double _y);
         double getVal(double* w, vector<int>& _x);
         double getFirstDeri(double* w, vector<int>& _x, double _y);
@@ -179,18 +187,14 @@ double LogLoss2::getVal(double* w, vector<int>& _x) {
 }
 
 double LogLoss2::getLoss(double* w, vector<int>& _x, double _y) {
-    double pre = getVal(w, _x);
-    if (_y == 1) {
-        return log(pre);
-    } else {
-        return log(1 - pre);
-    }
+    return getLoss(getVal(w, _x), _y);
+}
+
+double LogLoss2::getLoss(double prediction, double _y) {
+    return 0 - (_y == 1 ? log(prediction) : log(1 - prediction));
 }
 
 double LogLoss2::getFirstDeri(double* w, vector<int>& _x, double _y) {
-    if(_y == 1) {
-
-    }
     return (1 - 2 *_y) / (1.0 + exp((2 *_y - 1) * dot(_x, w)));
 }
 
@@ -216,7 +220,7 @@ double* LogLoss2::getGradient(double prediction, vector<int>& _x, double _y) {
 
 void LogLoss2::updateGradient(double prediction, vector<int>& _x, double _y, double* t) {
     for (int i = 0; i < _x.size(); ++i) {
-        t[_x[i]] += (_y - prediction) / table.size();
+        t[_x[i]] += (prediction - _y) / table.size();
     }
 }
 
@@ -227,6 +231,9 @@ class LBFGS {
 		double stepSize;
         vector<Example*>& examples;
 		int m;
+        double lossSum;
+        double preLossSum;
+        double wolfe1Bound =  0.01;
 		double* alpha;
 		double* rho;
 		double H = 1.0;
@@ -238,6 +245,8 @@ class LBFGS {
         void predict();
         double* getGradient();
         void stepForward();
+        void stepBackward();
+        double evalWolfe();
 	public:
 		double* weight;
         double* lastGrad;
@@ -249,17 +258,25 @@ class LBFGS {
 			rho = (double*) malloc(sizeof(double) * m);
 			s = new LoopArray(m);
 			t = new LoopArray(m);
-			stepSize = 0.05;
-			stopGrad = 0.001;
+			stepSize = 8;
+			stopGrad = 0;
 		};
 		bool learn();
         void init();
 };
 
+double LBFGS::evalWolfe() {
+    //wolfe1 = (loss_sum - previous_loss_sum) / (step_size * g0_d);
+    double wolfe1 = (lossSum - preLossSum) / (stepSize * dot(lastGrad, direction));
+    return wolfe1 > 0 ? wolfe1 : -wolfe1;
+}
+
 void LBFGS::predict() {
+    lossSum = 0;
     for(Example* example : examples) {
         // example->prediction = dot(example->features, weight);
         example->prediction = loss.getVal(weight, example->features);
+        lossSum += loss.getLoss(example->prediction, example->label);
     }
 }
 
@@ -276,15 +293,33 @@ double* LBFGS::getGradient() {
 bool LBFGS::learn() {
     // xi+1 = xi + dire
     stepForward();
+    preLossSum = lossSum;
     predict();
-    cal_and_save_ST();
-    getDirection(lastGrad);
-    double grad_norm = norm(lastGrad);
+    double wolfe1 = evalWolfe();
+    //cout << "lossSum and preLossSum: \t" << lossSum << endl;
+    printf("lossSum: %f\t preLossSum: %f\n", lossSum, preLossSum);
+    if(wolfe1 == 0 || isnan(wolfe1)) {
+        cout << "wolfe1 is nan  " << wolfe1 << endl;
+        return false;
+    }
+    cout << "wolfe1    " << wolfe1 << endl;
+    //if(lossSum > preLossSum || wolfe1 < wolfe1Bound) {
+    if(lossSum > preLossSum) {
+        stepBackward();
+        stepSize /= 2;
+        return true;
+    }
+    //stepSize = 1;
+    getGradient();
+    float grad_norm = norm(grad);
     cout << "norm   " << grad_norm << endl;
-    if(grad_norm < stopGrad) {
+//  if(grad_norm < stopGrad && isnan(grad_norm)) {
+    if(lossSum == 0 || grad_norm == 0 || isnan(grad_norm)) {
         cout << "Reach the gap  " << grad_norm << endl;
         return false;
     }
+    cal_and_save_ST();
+    getDirection(lastGrad);
     return true;
 }
 
@@ -301,13 +336,20 @@ void LBFGS::stepForward() {
     }
 }
 
+void LBFGS::stepBackward() {
+    cout << "step back" << endl;
+    for(int i = 0; i < table.size(); ++i) {
+        weight[i] += direction[i] * stepSize;
+    }
+    lossSum = preLossSum;
+}
+
 void LBFGS::cal_and_save_ST() {
 	//  weight = weight - direction * stepSize;
 	// s = thisW - lastW = -direction * step
     scal(direction, 0 - stepSize);
     //direction->scal(stepSize);
 	double* ss = direction;
-	grad = getGradient();
 	// grad = grad - lastGrad, lastGrad = lastGrad + grad
     //grad->pax(-1, *lastGrad);
     ypax(grad, -1, lastGrad);
