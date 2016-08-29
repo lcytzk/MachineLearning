@@ -276,6 +276,7 @@ double LBFGS::evalWolfe() {
 }
 
 void LBFGS::predict() {
+    preLossSum = lossSum;
     lossSum = 0;
     double reg = 0.5 * lambda2 * norm(weight) / table.size();
     for(Example* example : examples) {
@@ -312,7 +313,6 @@ double* LBFGS::getGradient() {
 bool LBFGS::learn() {
     // xi+1 = xi + dire
     stepForward();
-    preLossSum = lossSum;
     predict();
 //    double wolfe1 = evalWolfe();
 //    //cout << "lossSum and preLossSum: \t" << lossSum << endl;
@@ -338,7 +338,6 @@ bool LBFGS::learn() {
     //     stepSize *= 2;
     // }
     // stepSize =((stepSize + 0.1) > 1) ? stepSize : stepSize + 0.1;
-    stepSize = STEP_SIZE;
     getGradient();
     float grad_norm = norm(grad);
     cout << "norm   " << grad_norm << endl;
@@ -349,6 +348,7 @@ bool LBFGS::learn() {
     }
     cal_and_save_ST();
     getDirection(lastGrad);
+    stepSize = STEP_SIZE;
     return true;
 }
 
@@ -387,19 +387,13 @@ void LBFGS::cal_and_save_ST() {
 	// grad = grad - lastGrad grad will be y
 	double* y = grad;
 	updateST(ss, y);
-    //H = s->dot(*y) / y->dot(*y);
-    //outputModel(y, table.size());
-    //cout << "y dot y   " << dot(y,y) << endl;
-    //cout << "ss dot y   " << dot(ss,y) << endl;
     H = dot(ss, y) / dot(y, y);
-    //cout << "HHHHHHHHHHH   " << H << endl;
 }
 
 double* LBFGS::getDirection(double* qq) {
 	// two loop
 	double* q = (double*) malloc(table.size() * sizeof(double));
     memcpy(q, qq, table.size() * sizeof(double));
-    //outputModel(q, table.size());
 	int k = min(m, s->size());
     if(k > 0) rho[k-1] = 1.0 / dot((*s)[k-1], (*t)[k-1]);
 	for (int i = k-1; i >= 0; --i) {
