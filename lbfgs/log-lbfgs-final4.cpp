@@ -7,6 +7,7 @@
 #include <fstream>
 #include <string>
 #include <map>
+#include <unordered_map>
 
 using namespace std;
 
@@ -18,7 +19,7 @@ double  DIRE_PH2 = 0;
 double DIRE_PH3 = 0;
 double STEP_SIZE = 1;
 
-map<string,int> table;
+unordered_map<string,int> table;
 
 void outputModel(double* w, int size) {
     cout << "model" << endl;
@@ -148,7 +149,7 @@ double LogLoss::getFirstDeri(double prediction, double _y) {
 }
 
 double* LogLoss::getGradient(double* w, vector<int>& _x, double _y) {
-	double* t = (double*) malloc(sizeof(double) * table.size());
+	double* t = (double*) calloc(table.size(), sizeof(double));
 	for (int i = 0; i < _x.size(); ++i) {
         t[_x[i]] = getFirstDeri(w, _x, _y);
 	}
@@ -156,7 +157,7 @@ double* LogLoss::getGradient(double* w, vector<int>& _x, double _y) {
 }
 
 double* LogLoss::getGradient(double prediction, vector<int>& _x, double _y) {
-    double* t = (double*) malloc(sizeof(double) * table.size());
+    double* t = (double*) calloc(table.size(), sizeof(double));
     for (int i = 0; i < _x.size(); ++i) {
         t[_x[i]] = getFirstDeri(prediction, _y);
     }
@@ -202,7 +203,7 @@ double LogLoss2::getFirstDeri(double prediction, double _y) {
 }
 
 double* LogLoss2::getGradient(double* w, vector<int>& _x, double _y) {
-    double* t = (double*) malloc(sizeof(double) * table.size());
+    double* t = (double*) calloc(table.size(), sizeof(double));
     for (int i = 0; i < _x.size(); ++i) {
         t[_x[i]] = getFirstDeri(w, _x, _y);
     }
@@ -210,7 +211,7 @@ double* LogLoss2::getGradient(double* w, vector<int>& _x, double _y) {
 }
 
 double* LogLoss2::getGradient(double prediction, vector<int>& _x, double _y) {
-    double* t = (double*) malloc(sizeof(double) * table.size());
+    double* t = (double*) calloc(table.size(), sizeof(double));
     for (int i = 0; i < _x.size(); ++i) {
         t[_x[i]] = getFirstDeri(prediction, _y);
     }
@@ -245,7 +246,7 @@ class LBFGS {
         double evalWolfe();
         void updateGradientWithLambda2(double* grad);
         bool hasBack = false;
-        double lambda2 = 0.5;
+        double lambda2 = 0;
 	public:
 		double* weight;
         double* lastGrad;
@@ -280,7 +281,13 @@ void LBFGS::predict() {
     for(Example* example : examples) {
         // example->prediction = dot(example->features, weight);
         example->prediction = loss.getVal(weight, example->features);
-        lossSum += loss.getLoss(example->prediction, example->label);
+        double l = loss.getLoss(example->prediction, example->label);
+        if(l > 1) {
+            printf("ERROR: %f\t %f\n", example->prediction, example->label);
+            printf("\tERROR: %f\n", dot(example->features, weight));
+            printf("\t\ttERROR: %f\n", l);
+        }
+        lossSum += l;
     }
     lossSum += reg;
 }
@@ -438,7 +445,8 @@ void splitString(string s, vector<string>& output, const char delimiter)
 }
 
 int getIndex(string item) {
-    map<string, int>::iterator it = table.find(item);
+    //map<string, int>::iterator it = table.find(item);
+    auto it = table.find(item);
     if (it == table.end()) {
         table.insert(pair<string, int>(item, table.size()));
     } else {
@@ -468,12 +476,38 @@ bool getNextXY(vector<int>& x, double& y, ifstream& fo, vector<string>& v) {
     return true;
 }
 
-void outputAcu(LBFGS& lbfgs, Loss& ll, char* filename) {
+bool getOnlyNextXY(vector<int>& x, double& y, ifstream& fo, vector<string>& v) {
+    if(fo.eof()) {
+        cout << "reach the file end.1" << endl;
+        return false;
+    }
+    string str;
+    getline(fo, str);
+    if(str.length() < 2) {
+        cout << "reach the file end.2" << endl;
+        return false;
+    }
+    v.clear();
+    splitString(str, v, ' ');
+    x.clear();
+    y = (atoi(v[0].c_str()) == 1) ? 1.0 : 0;
+    for(int i = 2; i < v.size(); ++i) {
+        auto it = table.find(v[i]);
+        //map<string, int>::iterator it = table.find(v[i]);
+        if (it != table.end()) {
+            x.push_back(it->second);
+        }
+    }
+    return true;
+}
+
+void outputAcu(double* weight, Loss& ll, char* testfile) {
+    cout << "begin acu" << endl;
     vector<int> xx;
     double yy;
     ifstream fo;
     ofstream fw;
-    fo.open("test_data.txt");
+    fo.open(testfile);
     fw.open("my_res");
     double allLoss = 0;
     int count = 0;
@@ -481,11 +515,11 @@ void outputAcu(LBFGS& lbfgs, Loss& ll, char* filename) {
     vector<string> v;
     int count1 = 0;
     int count1_shot = 0;
-    while (getNextXY(xx, yy, fo, v)) {
-        double loss = ll.getLoss(lbfgs.weight, xx, yy);
+    while (getOnlyNextXY(xx, yy, fo, v)) {
+        double loss = ll.getLoss(weight, xx, yy);
         //cout << "prediction  " << ll.getVal(lbfgs.weight, xx) <<endl;
-        double prediction1 = ll.getVal(lbfgs.weight, xx);
-        double prediction = ll.getVal(lbfgs.weight, xx) > 0.5 ? 1 : 0;
+        double prediction1 = ll.getVal(weight, xx);
+        double prediction = prediction1 > 0.5 ? 1 : 0;
         allLoss += loss;
         //cout << loss << endl;
         if (prediction == yy) {
@@ -498,6 +532,7 @@ void outputAcu(LBFGS& lbfgs, Loss& ll, char* filename) {
             }
         }
         fw << prediction1 << "," << (yy == 1 ? 1 : -1) << endl;
+     //   if (sampleSize % 1000 == 0) cout << sampleSize << endl;
         ++sampleSize;
     }
     fo.close();
@@ -534,6 +569,16 @@ void outputPredictions(vector<Example*>& examples) {
     printf("\n");
 }
 
+void saveModel(double* weight) {
+    ofstream fo;
+    fo.open("my.model");
+    fo << table.size() << endl;
+    for(auto it = table.begin(); it != table.end(); ++it) {
+        fo << it->first << ","  << it->second << "," << weight[it->second] << endl;
+    }
+    fo.close();
+}
+
 void test(char* filename) {
     cout << "load examples." << endl;
     vector<Example*> examples;
@@ -543,7 +588,7 @@ void test(char* filename) {
     printf("example size is : %ld\n", examples.size());
     printf("table size is : %ld\n", table.size());
     double* weight = (double*) calloc(table.size(), sizeof(double));
-    LogLoss ll;
+    LogLoss2 ll;
 	LBFGS lbfgs(ll, examples, weight);
     cout << "begin learn" << endl;
     start = clock();
@@ -562,26 +607,48 @@ void test(char* filename) {
             printf("Round %d. Stop here.\n", i+1);
             break;
         }
-        if(lbfgs.lossSum < lbfgs.preLossSum) {
-            end = clock();
-            printf("round %d used %f  stepSize is: %f\n", i+1, (end - start)/(double)CLOCKS_PER_SEC, lbfgs.stepSize);
-            start = end;
-        } else {
-            --i;
-        }
         //outputModel(weight, table.size());
         //outputPredictions(examples);
     }
     //cout << "One pass used time: " << (clock() - start)/double(CLOCKS_PER_SEC) << endl; 
     //outputModel(weight, table.size());
-    outputAcu(lbfgs, ll, filename);
+    saveModel(weight);
+//    outputAcu(weight, ll, filename);
+}
+
+double* loadModel() {
+    cout << "begin load model" << endl;
+    ifstream fr;
+    fr.open("my.model");
+    string str;
+    getline(fr, str);
+    int size = atoi(str.c_str());
+    double* weight = (double*) calloc(size, sizeof(double));
+    int i = 0;
+    vector<string> v;
+    while(i++ < size) {
+        getline(fr, str);
+        v.clear();
+        splitString(str, v, ',');
+        int index = atoi(v[1].c_str());
+        table[v[0]] = index;
+        weight[index] = atof(v[2].c_str());
+    }
+    return weight;
 }
 
 int main(int argc, char* argv[]) {
     int start_time = clock();
     char* filename = argv[1];
-    test(filename);
-    cout << "finish program." << endl;
-    cout << "Used time: " << (clock() - start_time)/double(CLOCKS_PER_SEC) << endl; 
+    string mode(filename);
+    if(mode == "load") {
+        LogLoss2 ll;
+        double* weight = loadModel();
+        outputAcu(weight, ll, argv[2]);
+    } else {
+        test(filename);
+        cout << "finish program." << endl;
+        cout << "Used time: " << (clock() - start_time)/double(CLOCKS_PER_SEC) << endl; 
+    }
 	return 0;
 }
