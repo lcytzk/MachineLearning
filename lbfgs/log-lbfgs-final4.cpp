@@ -18,6 +18,7 @@ double DIRE_PH1 = 0;
 double  DIRE_PH2 = 0;
 double DIRE_PH3 = 0;
 double STEP_SIZE = 1;
+int SAMPLE_SIZE = 0;    
 
 unordered_map<string,int> table;
 
@@ -166,7 +167,7 @@ double* LogLoss::getGradient(double prediction, vector<int>& _x, double _y) {
 
 void LogLoss::updateGradient(double prediction, vector<int>& _x, double _y, double* t) {
     for (int i = 0; i < _x.size(); ++i) {
-        t[_x[i]] += getFirstDeri(prediction, _y) / table.size();
+        t[_x[i]] += getFirstDeri(prediction, _y) / SAMPLE_SIZE;
     }
 }
 
@@ -220,7 +221,7 @@ double* LogLoss2::getGradient(double prediction, vector<int>& _x, double _y) {
 
 void LogLoss2::updateGradient(double prediction, vector<int>& _x, double _y, double* t) {
     for (int i = 0; i < _x.size(); ++i) {
-        t[_x[i]] += (prediction - _y) / table.size();
+        t[_x[i]] += (prediction - _y) / SAMPLE_SIZE;
     }
 }
 
@@ -246,7 +247,7 @@ class LBFGS {
         double evalWolfe();
         void updateGradientWithLambda2(double* grad);
         bool hasBack = false;
-        double lambda2 = 0;
+        double lambda2;
 	public:
 		double* weight;
         double* lastGrad;
@@ -255,7 +256,7 @@ class LBFGS {
 		double stepSize;
         double lossSum;
         double preLossSum;
-		LBFGS(Loss& _loss, vector<Example*>& _examples, double* _weight): loss(_loss),  examples(_examples), weight(_weight) {
+		LBFGS(Loss& _loss, vector<Example*>& _examples, double* _weight, double _lambda2): loss(_loss),  examples(_examples), weight(_weight), lambda2(_lambda2) {
             m = 15;
 			alpha = (double*) malloc(sizeof(double) * m);
 			rho = (double*) malloc(sizeof(double) * m);
@@ -283,11 +284,11 @@ void LBFGS::predict() {
         // example->prediction = dot(example->features, weight);
         example->prediction = loss.getVal(weight, example->features);
         double l = loss.getLoss(example->prediction, example->label);
-        if(l > 1) {
-            printf("ERROR: %f\t %f\n", example->prediction, example->label);
-            printf("\tERROR: %f\n", dot(example->features, weight));
-            printf("\t\ttERROR: %f\n", l);
-        }
+        //if(l > 1) {
+        //    printf("ERROR: %f\t %f\n", example->prediction, example->label);
+        //    printf("\tERROR: %f\n", dot(example->features, weight));
+        //    printf("\t\ttERROR: %f\n", l);
+        //}
         lossSum += l;
     }
     lossSum += reg;
@@ -573,17 +574,18 @@ void saveModel(double* weight) {
     fo.close();
 }
 
-void test(char* filename) {
+void test(char* filename, double lambda2) {
     cout << "load examples." << endl;
     vector<Example*> examples;
     int start = clock();
     loadExamples(examples, filename);
     cout << "load examples cost " << (clock() - start)/(double)CLOCKS_PER_SEC << endl;
     printf("example size is : %ld\n", examples.size());
+    SAMPLE_SIZE = examples.size();
     printf("table size is : %ld\n", table.size());
     double* weight = (double*) calloc(table.size(), sizeof(double));
     LogLoss2 ll;
-	LBFGS lbfgs(ll, examples, weight);
+	LBFGS lbfgs(ll, examples, weight, lambda2);
     cout << "begin learn" << endl;
     start = clock();
     lbfgs.init();
@@ -601,6 +603,7 @@ void test(char* filename) {
             printf("Round %d. Stop here.\n", i+1);
             break;
         }
+        printf("Round %d\n", i);
         //outputModel(weight, table.size());
         //outputPredictions(examples);
     }
@@ -640,7 +643,8 @@ int main(int argc, char* argv[]) {
         double* weight = loadModel();
         outputAcu(weight, ll, argv[2]);
     } else {
-        test(filename);
+        double lambda2 = atof(argv[2]);
+        test(filename, lambda2);
         cout << "finish program." << endl;
         cout << "Used time: " << (clock() - start_time)/double(CLOCKS_PER_SEC) << endl; 
     }
