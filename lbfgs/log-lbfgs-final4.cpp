@@ -1,8 +1,7 @@
-#include <malloc.h>
+#include <stdlib.h>
 #include <memory.h>
 #include <vector>
 #include <iostream>
-#include <stdlib.h>
 #include <time.h>
 #include <math.h>
 #include <fstream>
@@ -17,7 +16,7 @@ double ROUND = 0;
 double DIRE_PH1 = 0;
 double  DIRE_PH2 = 0;
 double DIRE_PH3 = 0;
-double STEP_SIZE = 2;
+double STEP_SIZE = 1;
 
 map<string,int> table;
 
@@ -170,7 +169,6 @@ void LogLoss::updateGradient(double prediction, vector<int>& _x, double _y, doub
     }
 }
 
-
 class LogLoss2 : public Loss {
     public:
         double getLoss(double prediction, double _y);
@@ -231,7 +229,7 @@ class LBFGS {
 		Loss& loss;
         vector<Example*>& examples;
 		int m;
-        double wolfe1Bound =  0.01;
+        double wolfe1Bound =  0.5;
 		double* alpha;
 		double* rho;
 		double H = 1.0;
@@ -245,7 +243,9 @@ class LBFGS {
         void stepForward();
         void stepBackward();
         double evalWolfe();
+        void updateGradientWithLambda2(double* grad);
         bool hasBack = false;
+        double lambda2 = 0.5;
 	public:
 		double* weight;
         double* lastGrad;
@@ -270,15 +270,24 @@ class LBFGS {
 double LBFGS::evalWolfe() {
     //wolfe1 = (loss_sum - previous_loss_sum) / (step_size * g0_d);
     double wolfe1 = (lossSum - preLossSum) / (stepSize * dot(lastGrad, direction));
+    stepSize = (lossSum - preLossSum) / (wolfe1Bound * dot(lastGrad, direction));
     return wolfe1 > 0 ? wolfe1 : -wolfe1;
 }
 
 void LBFGS::predict() {
     lossSum = 0;
+    double reg = 0.5 * lambda2 * norm(weight) / table.size();
     for(Example* example : examples) {
         // example->prediction = dot(example->features, weight);
         example->prediction = loss.getVal(weight, example->features);
         lossSum += loss.getLoss(example->prediction, example->label);
+    }
+    lossSum += reg;
+}
+
+void LBFGS::updateGradientWithLambda2(double* grad) {
+    for(int i = 0; i < table.size(); ++i) {
+        grad[i] += lambda2 * weight[i] / table.size();
     }
 }
 
@@ -289,6 +298,7 @@ double* LBFGS::getGradient() {
         loss.updateGradient(example->prediction, example->features, example->label, grad);
         //printf("%f\t%f\t%f\n", example->prediction, example->label, grad[18]);
     }
+    updateGradientWithLambda2(grad);
     return grad;
 }
 
@@ -458,12 +468,12 @@ bool getNextXY(vector<int>& x, double& y, ifstream& fo, vector<string>& v) {
     return true;
 }
 
-void outputAcu(LBFGS& lbfgs, Loss& ll) {
+void outputAcu(LBFGS& lbfgs, Loss& ll, char* filename) {
     vector<int> xx;
     double yy;
     ifstream fo;
     ofstream fw;
-    fo.open("in2-2.txt");
+    fo.open("test_data.txt");
     fw.open("my_res");
     double allLoss = 0;
     int count = 0;
@@ -502,9 +512,9 @@ void outputAcu(LBFGS& lbfgs, Loss& ll) {
    // LBFGS.weight.saveToFile();
 }
 
-void loadExamples(vector<Example*>& examples) {
+void loadExamples(vector<Example*>& examples, char* filename) {
     ifstream fo;
-    fo.open("in2-2.txt");
+    fo.open(filename);
     vector<int> xx;
     double yy;
     vector<string> v;
@@ -524,16 +534,16 @@ void outputPredictions(vector<Example*>& examples) {
     printf("\n");
 }
 
-void test() {
+void test(char* filename) {
     cout << "load examples." << endl;
     vector<Example*> examples;
     int start = clock();
-    loadExamples(examples);
+    loadExamples(examples, filename);
     cout << "load examples cost " << (clock() - start)/(double)CLOCKS_PER_SEC << endl;
     printf("example size is : %ld\n", examples.size());
     printf("table size is : %ld\n", table.size());
     double* weight = (double*) calloc(table.size(), sizeof(double));
-    LogLoss2 ll;
+    LogLoss ll;
 	LBFGS lbfgs(ll, examples, weight);
     cout << "begin learn" << endl;
     start = clock();
@@ -564,12 +574,13 @@ void test() {
     }
     //cout << "One pass used time: " << (clock() - start)/double(CLOCKS_PER_SEC) << endl; 
     //outputModel(weight, table.size());
-    outputAcu(lbfgs, ll);
+    outputAcu(lbfgs, ll, filename);
 }
 
 int main(int argc, char* argv[]) {
     int start_time = clock();
-    test();
+    char* filename = argv[1];
+    test(filename);
     cout << "finish program." << endl;
     cout << "Used time: " << (clock() - start_time)/double(CLOCKS_PER_SEC) << endl; 
 	return 0;
