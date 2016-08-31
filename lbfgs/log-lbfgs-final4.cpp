@@ -6,19 +6,20 @@
 #include <math.h>
 #include <fstream>
 #include <string>
-#include <map>
 #include <unordered_map>
 
 using namespace std;
 
+int LEARN_START = 0;
 int GLO = 0;
 int DIRE = 0;
-double ROUND = 0;
 double DIRE_PH1 = 0;
 double  DIRE_PH2 = 0;
 double DIRE_PH3 = 0;
 double STEP_SIZE = 1;
 int SAMPLE_SIZE = 0;    
+int ROUND = 1;
+int START_TIME, END_TIME;
 
 unordered_map<string,int> table;
 
@@ -279,7 +280,7 @@ double LBFGS::evalWolfe() {
 void LBFGS::predict() {
     preLossSum = lossSum;
     lossSum = 0;
-    double reg = 0.5 * lambda2 * norm(weight) / table.size();
+    double reg = 0.5 * lambda2 * dot(weight, weight) / table.size();
     for(Example* example : examples) {
         // example->prediction = dot(example->features, weight);
         example->prediction = loss.getVal(weight, example->features);
@@ -317,7 +318,9 @@ bool LBFGS::learn() {
     predict();
 //    double wolfe1 = evalWolfe();
 //    //cout << "lossSum and preLossSum: \t" << lossSum << endl;
-    printf("lossSum: %f\t preLossSum: %f  \tdirMag: %f\n", lossSum/table.size(), preLossSum/table.size(), norm(direction));
+    END_TIME = clock(); 
+    printf("#%d#\tlossSum: %f\t preLossSum: %f  \tused time: %f\n", ROUND, lossSum/SAMPLE_SIZE, preLossSum/SAMPLE_SIZE, (END_TIME - START_TIME)/(double)CLOCKS_PER_SEC);
+    START_TIME = END_TIME;
 //    if(wolfe1 == 0 || isnan(wolfe1)) {
 //        cout << "wolfe1 is nan  " << wolfe1 << endl;
 //        return false;
@@ -340,13 +343,14 @@ bool LBFGS::learn() {
     // }
     // stepSize =((stepSize + 0.1) > 1) ? stepSize : stepSize + 0.1;
     getGradient();
-    float grad_norm = norm(grad);
-    cout << "norm   " << grad_norm << endl;
+//    float grad_norm = norm(grad);
+//    cout << "norm   " << grad_norm << endl;
 //  if(grad_norm < stopGrad && isnan(grad_norm)) {
-    if(lossSum == 0 || grad_norm == 0 || isnan(grad_norm)) {
-        cout << "Reach the gap  " << grad_norm << endl;
-        return false;
-    }
+    //if(lossSum == 0 || grad_norm == 0 || isnan(grad_norm)) {
+    //if(lossSum == 0 || isnan(grad_norm)) {
+    //    cout << "Reach the gap  " << grad_norm << endl;
+    //    return false;
+    //}
     cal_and_save_ST();
     getDirection(lastGrad);
     stepSize = STEP_SIZE;
@@ -595,20 +599,19 @@ void test(char* filename, double lambda2) {
     //outputModel(weight, table.size());
     //outputPredictions(examples);
     bool flag = false;
+    int LEADN_START = clock();
     for(int i = 0; i < 100000; ++i) {
+        START_TIME = clock();
     	if(!lbfgs.learn()) {
-            flag = true;
-        }
-        if (flag) {
-            printf("Round %d. Stop here.\n", i+1);
             break;
         }
-        printf("Round %d\n", i);
+        ++ROUND;
         //outputModel(weight, table.size());
         //outputPredictions(examples);
     }
     //cout << "One pass used time: " << (clock() - start)/double(CLOCKS_PER_SEC) << endl; 
     //outputModel(weight, table.size());
+    printf("Learned finished, used %f.\n", (clock() - LEARN_START) / (double) CLOCKS_PER_SEC);
     saveModel(weight);
 //    outputAcu(weight, ll, filename);
 }
