@@ -1,4 +1,5 @@
 #include <stdlib.h>
+//#include <algorithm>
 #include <memory.h>
 #include <vector>
 #include <iostream>
@@ -245,7 +246,7 @@ class LBFGS {
         double* getGradient();
         void stepForward();
         void stepBackward();
-        double evalWolfe();
+        bool evalWolfe();
         void updateGradientWithLambda2(double* grad);
         bool hasBack = false;
         double lambda2;
@@ -257,30 +258,29 @@ class LBFGS {
 		double stepSize;
         double lossSum;
         double preLossSum;
-		LBFGS(Loss& _loss, vector<Example*>& _examples, double* _weight, double _lambda2): loss(_loss),  examples(_examples), weight(_weight), lambda2(_lambda2) {
+        double lossBound;
+		LBFGS(Loss& _loss, vector<Example*>& _examples, double* _weight, double _lambda2, double _lossBound): loss(_loss),  examples(_examples), weight(_weight), lambda2(_lambda2), lossBound(_lossBound) {
             m = 15;
 			alpha = (double*) malloc(sizeof(double) * m);
 			rho = (double*) malloc(sizeof(double) * m);
 			s = new LoopArray(m);
 			t = new LoopArray(m);
-			stepSize = STEP_SIZE;
+			stepSize = 0.01;
 			stopGrad = 0;
 		};
 		bool learn();
         void init();
 };
 
-double LBFGS::evalWolfe() {
+bool LBFGS::evalWolfe() {
     //wolfe1 = (loss_sum - previous_loss_sum) / (step_size * g0_d);
-    double wolfe1 = (lossSum - preLossSum) / (stepSize * dot(lastGrad, direction));
-    stepSize = (lossSum - preLossSum) / (wolfe1Bound * dot(lastGrad, direction));
-    return wolfe1 > 0 ? wolfe1 : -wolfe1;
+    return lossSum - preLossSum  <= 0.0001 * stepSize * dot(lastGrad, direction);
 }
 
 void LBFGS::predict() {
     preLossSum = lossSum;
     lossSum = 0;
-    double reg = 0.5 * lambda2 * dot(weight, weight) / table.size();
+    double reg = lambda2 * dot(weight, weight);
     for(Example* example : examples) {
         // example->prediction = dot(example->features, weight);
         example->prediction = loss.getVal(weight, example->features);
@@ -297,7 +297,7 @@ void LBFGS::predict() {
 
 void LBFGS::updateGradientWithLambda2(double* grad) {
     for(int i = 0; i < table.size(); ++i) {
-        grad[i] += lambda2 * weight[i] / table.size();
+        grad[i] += lambda2 * weight[i];
     }
 }
 
@@ -316,25 +316,36 @@ bool LBFGS::learn() {
     // xi+1 = xi + dire
     stepForward();
     predict();
-//    double wolfe1 = evalWolfe();
 //    //cout << "lossSum and preLossSum: \t" << lossSum << endl;
     END_TIME = clock(); 
-    printf("#%d#\tlossSum: %f\t preLossSum: %f  \tused time: %f\n", ROUND, lossSum/SAMPLE_SIZE, preLossSum/SAMPLE_SIZE, (END_TIME - START_TIME)/(double)CLOCKS_PER_SEC);
+    printf("#%d#\tlossSum: %f\t preLossSum: %f\tstepSize:%f\tused time: %f", ROUND, lossSum/SAMPLE_SIZE, preLossSum/SAMPLE_SIZE, stepSize, (END_TIME - START_TIME)/(double)CLOCKS_PER_SEC);
     START_TIME = END_TIME;
+    if(!evalWolfe()) {
+        stepBackward();
+        printf("\t step back\n");
+        stepSize /= 2;
+        return true;
+    }
+    printf("\n");
 //    if(wolfe1 == 0 || isnan(wolfe1)) {
 //        cout << "wolfe1 is nan  " << wolfe1 << endl;
 //        return false;
 //    }
 //    cout << "wolfe1    " << wolfe1 << endl;
     //if(lossSum > preLossSum || wolfe1 < wolfe1Bound) {
-    if(lossSum > preLossSum) {
-        stepBackward();
-        hasBack = true;
-        stepSize /= 2;
-        return true;
-    }
-    if(lossSum/preLossSum > 0.999) {
-        printf("Decrease in loss in 0.1%% so stop.\n");
+    //if(lossSum > preLossSum) {
+    //    stepBackward();
+    //    hasBack = true;
+    //    stepSize /= 2;
+    //    return true;
+    //}
+    //if(isnan(lossSum) || lossSum/SAMPLE_SIZE < lossBound) {
+    //    printf("Reach the bound %f so stop.\n", lossBound);
+    //    return false;
+    //}
+    if(isnan(lossSum) || lossSum/preLossSum > 0.999) {
+    //if(isnan(lossSum) || lossSum < 0.07) {
+        printf("Decrease in loss in 0.01%% so stop.\n");
         return false;
     }
     // if(hasBack) {
@@ -371,7 +382,6 @@ void LBFGS::stepForward() {
 }
 
 void LBFGS::stepBackward() {
-    cout << "step back" << endl;
     for(int i = 0; i < table.size(); ++i) {
         weight[i] += direction[i] * stepSize;
     }
@@ -426,19 +436,13 @@ void LBFGS::updateST(double* _s, double* _t) {
 	t->appendAndRemoveFirstIfFull(_t);
 }
 
-void splitString(string s, vector<string>& output, const char delimiter)
-{
+void splitString(string s, vector<string>& output, const char delimiter) {
     size_t start=0;
     size_t end=s.find_first_of(delimiter);
-    
-    while (end <= string::npos)
-    {
-        output.push_back(s.substr(start, end-start));
-
-        if (end == string::npos)
-            break;
-
-        start=end+1;
+    while (end != string::npos) {
+        if(end != start)
+            output.push_back(s.substr(start, end-start));
+        start = s.find_first_of(delimiter, end) + 1;
         end = s.find_first_of(delimiter, start);
     }
 }
@@ -469,8 +473,38 @@ bool getNextXY(vector<int>& x, double& y, ifstream& fo, vector<string>& v) {
     splitString(str, v, ' ');
     x.clear();
     y = (atoi(v[0].c_str()) == 1) ? 1.0 : 0;
-    for(int i = 2; i < v.size(); ++i) {
-        x.push_back(getIndex(v[i]));
+    string prefix;
+    for(int i = 1; i < v.size(); ++i) {
+        if(v[i].c_str()[0] != '|') {
+            x.push_back(getIndex(prefix + v[i]));
+        } else {
+            prefix = v[i];
+        }
+    }
+    return true;
+}
+
+bool getNextXY2(vector<int>& x, double& y, istream& fo, vector<string>& v) {
+    string str;
+    if(!getline(fo, str)) {
+        cout << "reach the file end.1" << endl;
+        return false;
+    }
+    if(str.length() < 2) {
+        cout << "reach the file end.2" << endl;
+        return false;
+    }
+    v.clear();
+    splitString(str, v, ' ');
+    x.clear();
+    y = (atoi(v[0].c_str()) == 1) ? 1.0 : 0;
+    string prefix;
+    for(int i = 1; i < v.size(); ++i) {
+        if(v[i].c_str()[0] != '|') {
+            x.push_back(getIndex(prefix + v[i]));
+        } else {
+            prefix = v[i];
+        }
     }
     return true;
 }
@@ -560,6 +594,17 @@ void loadExamples(vector<Example*>& examples, char* filename) {
     fo.close();
 }
 
+void loadExamples2(vector<Example*>& examples) {
+    vector<int> xx;
+    double yy;
+    vector<string> v;
+    while(getNextXY2(xx, yy, cin, v)) {
+        Example* example = new Example(xx);
+        example->label = yy;
+        examples.push_back(example);
+    }
+}
+
 void outputPredictions(vector<Example*>& examples) {
     cout << "predictions" << endl;
     for(Example* example : examples) {
@@ -578,7 +623,13 @@ void saveModel(double* weight) {
     fo.close();
 }
 
-void test(char* filename, double lambda2) {
+void outputTable() {
+    for(auto it = table.begin(); it != table.end(); ++it) {
+        cout << it->first << endl;
+    }
+}
+
+void test(char* filename, double lambda2, double lossBound) {
     cout << "load examples." << endl;
     vector<Example*> examples;
     int start = clock();
@@ -587,17 +638,16 @@ void test(char* filename, double lambda2) {
     printf("example size is : %ld\n", examples.size());
     SAMPLE_SIZE = examples.size();
     printf("table size is : %ld\n", table.size());
+//    for(auto it = table.begin(); it != table.end(); ++it) cout << "key\t" << it->first << "\tvalue\t" << it->second << endl;
     double* weight = (double*) calloc(table.size(), sizeof(double));
     LogLoss2 ll;
-	LBFGS lbfgs(ll, examples, weight, lambda2);
+	LBFGS lbfgs(ll, examples, weight, lambda2, lossBound);
     cout << "begin learn" << endl;
     start = clock();
     lbfgs.init();
     int end = clock();
     printf("init used %f\n", (end - start)/(double)CLOCKS_PER_SEC);
     start = end;
-    //outputModel(weight, table.size());
-    //outputPredictions(examples);
     bool flag = false;
     int LEADN_START = clock();
     for(int i = 0; i < 100000; ++i) {
@@ -606,14 +656,41 @@ void test(char* filename, double lambda2) {
             break;
         }
         ++ROUND;
-        //outputModel(weight, table.size());
-        //outputPredictions(examples);
     }
-    //cout << "One pass used time: " << (clock() - start)/double(CLOCKS_PER_SEC) << endl; 
-    //outputModel(weight, table.size());
     printf("Learned finished, used %f.\n", (clock() - LEARN_START) / (double) CLOCKS_PER_SEC);
     saveModel(weight);
-//    outputAcu(weight, ll, filename);
+}
+
+void test2(double lambda2, double lossBound) {
+    cout << "load examples." << endl;
+    vector<Example*> examples;
+    int start = clock();
+    loadExamples2(examples);
+    cout << "load examples cost " << (clock() - start)/(double)CLOCKS_PER_SEC << endl;
+    printf("example size is : %ld\n", examples.size());
+    SAMPLE_SIZE = examples.size();
+    printf("table size is : %ld\n", table.size());
+//    for(auto it = table.begin(); it != table.end(); ++it) cout << "key\t" << it->first << "\tvalue\t" << it->second << endl;
+    double* weight = (double*) calloc(table.size(), sizeof(double));
+    LogLoss2 ll;
+	LBFGS lbfgs(ll, examples, weight, lambda2, lossBound);
+    cout << "begin learn" << endl;
+    start = clock();
+    lbfgs.init();
+    int end = clock();
+    printf("init used %f\n", (end - start)/(double)CLOCKS_PER_SEC);
+    start = end;
+    bool flag = false;
+    int LEADN_START = clock();
+    for(int i = 0; i < 100000; ++i) {
+        START_TIME = clock();
+    	if(!lbfgs.learn()) {
+            break;
+        }
+        ++ROUND;
+    }
+    printf("Learned finished, used %f.\n", (clock() - LEARN_START) / (double) CLOCKS_PER_SEC);
+    saveModel(weight);
 }
 
 double* loadModel() {
@@ -641,13 +718,20 @@ int main(int argc, char* argv[]) {
     int start_time = clock();
     char* filename = argv[1];
     string mode(filename);
+    if(mode == "cat") {
+        test2(0, 0);
+        cout << "finish program." << endl;
+        cout << "Used time: " << (clock() - start_time)/double(CLOCKS_PER_SEC) << endl; 
+        return 0;
+    }
     if(mode == "load") {
         LogLoss2 ll;
         double* weight = loadModel();
         outputAcu(weight, ll, argv[2]);
     } else {
         double lambda2 = atof(argv[2]);
-        test(filename, lambda2);
+        double lossBound = atof(argv[3]);
+        test(filename, lambda2, lossBound);
         cout << "finish program." << endl;
         cout << "Used time: " << (clock() - start_time)/double(CLOCKS_PER_SEC) << endl; 
     }
