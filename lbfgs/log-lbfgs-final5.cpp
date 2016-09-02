@@ -26,7 +26,12 @@ int START_TIME, END_TIME;
 unordered_map<string,int> table;
 hash<string> str_hash;
 
-int W_SIZE = 1 << 21;
+int W_SIZE;
+int INDEX_SIZE = 1 << 21;
+
+int* weightIndex = (int*) calloc(INDEX_SIZE, sizeof(int));
+double* WEIGHT;
+int* gap;
 
 void outputModel(double* w, int size) {
     cout << "model" << endl;
@@ -70,12 +75,29 @@ double dot(vector<int>& x, double* w) {
     return res;
 }
 
+double dot(int* x, double* w, int size) {
+    double res = 0;
+    for(int i = 0 ; i < size; ++i) {
+        res += w[x[i]];
+    }
+    return res;
+}
+
 class Example {
     public:
         double prediction;
         double label;
-        vector<int> features;
-        Example(vector<int>& _features): features(_features), prediction(0) {}
+        int featureSize;
+        int* features;
+        Example(vector<int>& _features): prediction(0) {
+            features = (int*) malloc(_features.size() * sizeof(int));
+            int index = 0;
+            featureSize = _features.size();
+            for(int f : _features) {
+                features[index] = f;
+                ++index;
+            }
+        }
 };
 
 class LoopArray {
@@ -115,11 +137,13 @@ class Loss {
         virtual double getLoss(double prediction, double _y) = 0;
 		virtual double getLoss(double* w, vector<int>& _x, double _y) = 0;
         virtual double getVal(double* w, vector<int>& _x) = 0;
+        virtual double getVal(double* w, int* _x, int size) = 0;
         virtual double getFirstDeri(double* w, vector<int>& _x, double _y) = 0;
         virtual double getFirstDeri(double prediction, double _y) = 0;
 		virtual double* getGradient(double* w, vector<int>& _x, double _y) = 0;
         virtual double* getGradient(double prediction, vector<int>& _x, double _y) = 0;
         virtual void updateGradient(double prediction, vector<int>& _x, double _y, double* t) = 0;
+        virtual void updateGradient(double prediction, int* _x, double _y, double* t, int size) = 0;
 };
 
 class LogLoss : public Loss {
@@ -127,15 +151,21 @@ class LogLoss : public Loss {
         double getLoss(double prediction, double _y);
         double getLoss(double* w, vector<int>& _x, double _y);
         double getVal(double* w, vector<int>& _x);
+        double getVal(double* w, int* _x, int size);
         double getFirstDeri(double* w, vector<int>& _x, double _y);
         double getFirstDeri(double prediction, double _y);
         double* getGradient(double* w, vector<int>& _x, double _y);
         double* getGradient(double prediction, vector<int>& _x, double _y);
         void updateGradient(double prediction, vector<int>& _x, double _y, double* t);
+        void updateGradient(double prediction, int* _x, double _y, double* t, int size);
 };
 
 double LogLoss::getVal(double* w, vector<int>& _x) {
     return dot(_x, w);
+}
+
+double LogLoss::getVal(double* w, int* _x, int size) {
+    return 0;
 }
 
 double LogLoss::getLoss(double* w, vector<int>& _x, double _y) {
@@ -177,20 +207,31 @@ void LogLoss::updateGradient(double prediction, vector<int>& _x, double _y, doub
     }
 }
 
+void LogLoss::updateGradient(double prediction, int* _x, double _y, double* t, int size) {
+    for (int i = 0; i < size; ++i) {
+        t[_x[i]] += getFirstDeri(prediction, _y) / SAMPLE_SIZE;
+    }
+}
 class LogLoss2 : public Loss {
     public:
         double getLoss(double prediction, double _y);
         double getLoss(double* w, vector<int>& _x, double _y);
         double getVal(double* w, vector<int>& _x);
+        double getVal(double* w, int* _x, int size);
         double getFirstDeri(double* w, vector<int>& _x, double _y);
         double getFirstDeri(double prediction, double _y);
         double* getGradient(double* w, vector<int>& _x, double _y);
         double* getGradient(double prediction, vector<int>& _x, double _y);
         void updateGradient(double prediction, vector<int>& _x, double _y, double* t);
+        void updateGradient(double prediction, int* _x, double _y, double* t, int size);
 };
 
 double LogLoss2::getVal(double* w, vector<int>& _x) {
     return 1 / (1 + exp(-dot(_x, w)));
+}
+
+double LogLoss2::getVal(double* w, int* _x, int size) {
+    return 1 / (1 + exp(-dot(_x, w, size)));
 }
 
 double LogLoss2::getLoss(double* w, vector<int>& _x, double _y) {
@@ -227,6 +268,12 @@ double* LogLoss2::getGradient(double prediction, vector<int>& _x, double _y) {
 
 void LogLoss2::updateGradient(double prediction, vector<int>& _x, double _y, double* t) {
     for (int i = 0; i < _x.size(); ++i) {
+        t[_x[i]] += (prediction - _y) / SAMPLE_SIZE;
+    }
+}
+
+void LogLoss2::updateGradient(double prediction, int* _x, double _y, double* t, int size) {
+    for (int i = 0; i < size; ++i) {
         t[_x[i]] += (prediction - _y) / SAMPLE_SIZE;
     }
 }
@@ -287,7 +334,7 @@ void LBFGS::predict() {
     double reg = lambda2 * dot(weight, weight);
     for(Example* example : examples) {
         // example->prediction = dot(example->features, weight);
-        example->prediction = loss.getVal(weight, example->features);
+        example->prediction = loss.getVal(weight, example->features, example->featureSize);
         double l = loss.getLoss(example->prediction, example->label);
         //if(l > 1) {
         //    printf("ERROR: %f\t %f\n", example->prediction, example->label);
@@ -309,7 +356,7 @@ double* LBFGS::getGradient() {
     grad = (double*) calloc(W_SIZE, sizeof(double));
     int count = 0;
     for(Example* example : examples) {
-        loss.updateGradient(example->prediction, example->features, example->label, grad);
+        loss.updateGradient(example->prediction, example->features, example->label, grad, example->featureSize);
         //printf("%f\t%f\t%f\n", example->prediction, example->label, grad[18]);
     }
     updateGradientWithLambda2(grad);
@@ -453,7 +500,10 @@ void splitString(string s, vector<string>& output, const char delimiter) {
 
 int getIndex(string item) {
     //map<string, int>::iterator it = table.find(item);
-    return str_hash(item) % W_SIZE;
+    int index = str_hash(item) & (INDEX_SIZE - 1);
+    //cout << index << endl;
+    weightIndex[index] = 1;
+    return index;
 }
 
 bool getNextXY(vector<int>& x, double& y, ifstream& fo, vector<string>& v) {
@@ -471,9 +521,12 @@ bool getNextXY(vector<int>& x, double& y, ifstream& fo, vector<string>& v) {
     splitString(str, v, ' ');
     x.clear();
     y = (atoi(v[0].c_str()) == 1) ? 1.0 : 0;
+    string prefix;
     for(int i = 1; i < v.size(); ++i) {
         if(v[i].c_str()[0] != '|') {
-            x.push_back(getIndex(v[i]));
+            x.push_back(getIndex(prefix + v[i]));
+        } else {
+            prefix = v[i];
         }
     }
     return true;
@@ -589,19 +642,38 @@ void outputTable() {
     }
 }
 
+void initgap(vector<Example*>& examples) {
+    cout << "initgap" << endl;
+    int count = 0;
+    for(int i = 0; i < INDEX_SIZE; ++i) {
+        if(weightIndex[i] == 1) {
+            weightIndex[i] = count;
+            ++count;
+        }
+    }
+    WEIGHT = (double*) calloc(count, sizeof(double));
+    W_SIZE = count;
+    cout << "initgap finish    " << count << endl;
+    for(Example* example : examples) {
+        for(int i = 0; i < example->featureSize; ++i) {
+            example->features[i] = weightIndex[example->features[i]];
+        }
+    }
+}
+
 void test(char* filename, double lambda2, double lossBound) {
     cout << "load examples." << endl;
     vector<Example*> examples;
     int start = clock();
     loadExamples(examples, filename);
+    initgap(examples);
     cout << "load examples cost " << (clock() - start)/(double)CLOCKS_PER_SEC << endl;
     printf("example size is : %ld\n", examples.size());
     SAMPLE_SIZE = examples.size();
     //printf("table size is : %ld\n", W_SIZE);
 //    for(auto it = table.begin(); it != table.end(); ++it) cout << "key\t" << it->first << "\tvalue\t" << it->second << endl;
-    double* weight = (double*) calloc(W_SIZE, sizeof(double));
     LogLoss2 ll;
-	LBFGS lbfgs(ll, examples, weight, lambda2, lossBound);
+	LBFGS lbfgs(ll, examples, WEIGHT, lambda2, lossBound);
     cout << "begin learn" << endl;
     start = clock();
     lbfgs.init();
@@ -624,7 +696,7 @@ void test(char* filename, double lambda2, double lossBound) {
     //cout << "One pass used time: " << (clock() - start)/double(CLOCKS_PER_SEC) << endl; 
     //outputModel(weight, W_SIZE);
     printf("Learned finished, used %f.\n", (clock() - LEARN_START) / (double) CLOCKS_PER_SEC);
-    saveModel(weight);
+    saveModel(WEIGHT);
 //    outputAcu(weight, ll, filename);
 }
 
