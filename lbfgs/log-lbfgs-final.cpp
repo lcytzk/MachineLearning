@@ -3,34 +3,27 @@
 #include <vector>
 #include <iostream>
 #include <time.h>
-#include <math.h>
 #include <fstream>
 #include <string>
 #include <unordered_map>
 #include <functional>
 
+#include "lbfgs_util.h"
+
 using namespace std;
 
 int LEARN_START = 0;
-int GLO = 0;
-int DIRE = 0;
-double DIRE_PH1 = 0;
-double  DIRE_PH2 = 0;
-double DIRE_PH3 = 0;
 double STEP_SIZE = 1;
 int SAMPLE_SIZE = 0;    
 int ROUND = 1;
 int START_TIME, END_TIME;
 
-hash<string> str_hash;
-
 int W_SIZE;
 int INDEX_BIT = 18;
 int INDEX_SIZE;
-int* weightIndex;
+int* WEIGHT_INDEX;
 double* WEIGHT;
-double* condition;
-int* gap;
+double* CONDITION;
 
 void outputModel(double* w, int size) {
     cout << "model" << endl;
@@ -40,52 +33,22 @@ void outputModel(double* w, int size) {
     printf("\n");
 }
 
-double dot(double* x, double* y) {
-    double res = 0;
-    for(int i = 0; i < W_SIZE; ++i) {
-        res += x[i] * y[i];
-        //cout << "dot res  " << res << endl;
+void saveModel(double* weight) {
+    ofstream fo;
+    fo.open("my.model");
+    fo << INDEX_BIT << endl;
+    for(int i = 0; i < INDEX_SIZE; ++i) {
+        if(WEIGHT_INDEX[i] != -1)
+            fo << i  << ':' << weight[WEIGHT_INDEX[i]] << endl;
     }
-    //cout << "dot res  " << res << endl;
-    return res;
+    fo.close();
 }
 
-float norm(double* x) {
-    return sqrt(dot(x, x));
-}
-
-void scal(double* direction, double stepSize) {
-    for(int i = 0; i < W_SIZE; ++i) {
-        direction[i] *= stepSize;
-    }
-}
-
-void scalWithCondition(double* direction, double stepSize) {
-    for(int i = 0; i < W_SIZE; ++i) {
-        direction[i] *= stepSize * condition[i];
-    }
-}
-
-void ypax(double* y, double alpha, double* x) {
-    for(int i = 0; i < W_SIZE; ++i) {
-        y[i] += alpha * x[i];
-    }
-}
-
-double dot(vector<int>& x, double* w) {
-    double res = 0;
-    for(int i = 0 ; i < x.size(); ++i) {
-        res += w[x[i]];
-    }
-    return res;
-}
-
-double dot(int* x, double* w, int size) {
-    double res = 0;
-    for(int i = 0 ; i < size; ++i) {
-        res += w[x[i]];
-    }
-    return res;
+int getOnlyIndex(string s) {
+    int hash = 17;
+    const char* c = s.c_str();
+    while(*c) { hash = hash * 31 + *c; ++c; }
+    return hash & (INDEX_SIZE - 1);
 }
 
 class Example {
@@ -105,121 +68,6 @@ class Example {
         }
 };
 
-class LoopArray {
-	private:
-		int start, end;
-		int realSize;
-		int maxSize;
-		double** array;
-	public:
-		LoopArray(int _size) : maxSize(_size) {
-			realSize = 0;
-			start = end = 0;
-			array = (double**) malloc(sizeof(double*) * _size);
-		}
-		double* operator[](const int _index) const {
-    		return array[(_index + start) % maxSize];
-		}
-		void appendAndRemoveFirstIfFull(double* element) {
-			if (realSize == maxSize) {
-				free(array[start]);
-				array[start] = element;
-				start = (start + 1) % maxSize;
-			} else {
-				array[realSize++] = element;
-			}
-		}
-		int size() {
-			return realSize;
-		}
-        ~LoopArray() {
-            free(array);
-        }
-};
-
-class Loss {
-	public:
-        virtual double getLoss(double prediction, double _y) = 0;
-		virtual double getLoss(double* w, vector<int>& _x, double _y) = 0;
-        virtual double getVal(double* w, vector<int>& _x) = 0;
-        virtual double getVal(double* w, int* _x, int size) = 0;
-        virtual double getFirstDeri(double prediction, double _y) = 0;
-        virtual void updateGradient(double prediction, int* _x, double _y, double* t, int size) = 0;
-};
-
-class LogLoss : public Loss {
-    public:
-        double getLoss(double prediction, double _y);
-        double getLoss(double* w, vector<int>& _x, double _y);
-        double getVal(double* w, vector<int>& _x);
-        double getVal(double* w, int* _x, int size);
-        double getFirstDeri(double prediction, double _y);
-        void updateGradient(double prediction, int* _x, double _y, double* t, int size);
-};
-
-double LogLoss::getVal(double* w, vector<int>& _x) {
-    return dot(_x, w);
-}
-
-double LogLoss::getVal(double* w, int* _x, int size) {
-    return 0;
-}
-
-double LogLoss::getLoss(double* w, vector<int>& _x, double _y) {
-	return log(1 + exp((1 - 2 *_y) * dot(_x, w)));
-}
-
-
-double LogLoss::getLoss(double prediction, double _y) {
-    return log(1 + exp((1 - 2 *_y) * prediction));
-}
-
-double LogLoss::getFirstDeri(double prediction, double _y) {
-    return (1 - 2 *_y) / (1.0 + exp((2 *_y - 1) * prediction));
-}
-
-void LogLoss::updateGradient(double prediction, int* _x, double _y, double* t, int size) {
-    for (int i = 0; i < size; ++i) {
-        t[_x[i]] += getFirstDeri(prediction, _y) / SAMPLE_SIZE;
-    }
-}
-
-class LogLoss2 : public Loss {
-    public:
-        double getLoss(double prediction, double _y);
-        double getLoss(double* w, vector<int>& _x, double _y);
-        double getVal(double* w, vector<int>& _x);
-        double getVal(double* w, int* _x, int size);
-        double getFirstDeri(double prediction, double _y);
-        void updateGradient(double prediction, int* _x, double _y, double* t, int size);
-};
-
-double LogLoss2::getVal(double* w, vector<int>& _x) {
-    return 1 / (1 + exp(-dot(_x, w)));
-}
-
-double LogLoss2::getVal(double* w, int* _x, int size) {
-    return 1 / (1 + exp(-dot(_x, w, size)));
-}
-
-double LogLoss2::getLoss(double* w, vector<int>& _x, double _y) {
-    return getLoss(getVal(w, _x), _y);
-}
-
-double LogLoss2::getLoss(double prediction, double _y) {
-    return 0 - (_y == 1 ? log(prediction) : log(1 - prediction));
-}
-
-double LogLoss2::getFirstDeri(double prediction, double _y) {
-    return (1 - 2 *_y) / (1.0 + exp((2 *_y - 1) * prediction));
-}
-
-void LogLoss2::updateGradient(double prediction, int* _x, double _y, double* t, int size) {
-    for (int i = 0; i < size; ++i) {
-        t[_x[i]] += (prediction - _y) / SAMPLE_SIZE;
-    }
-}
-
 class LBFGS {
 	private:
 		double stopGrad;
@@ -232,26 +80,28 @@ class LBFGS {
 		double H = 1.0;
 		LoopArray* s;
 		LoopArray* t;
+        double lambda2;
+        double lossBound;
+		double stepSize;
+		double* weight;
+        int weightSize;
+        double* lastGrad;
+        double* grad;
+        double* direction;
+        double lossSum;
+        double preLossSum;
+
+        void stepForward();
+        void stepBackward();
+        bool evalWolfe();
+        void updateGradientWithLambda2(double* grad);
 		void cal_and_save_ST();
 		void updateST(double* _s, double* _t);
 		double* getDirection(double* q);
         void predict();
         double* getGradient();
-        void stepForward();
-        void stepBackward();
-        bool evalWolfe();
-        void updateGradientWithLambda2(double* grad);
-        double lambda2;
 	public:
-		double* weight;
-        double* lastGrad;
-        double* grad;
-        double* direction;
-		double stepSize;
-        double lossSum;
-        double preLossSum;
-        double lossBound;
-		LBFGS(Loss& _loss, vector<Example*>& _examples, double* _weight, double _lambda2, double _lossBound): loss(_loss),  examples(_examples), weight(_weight), lambda2(_lambda2), lossBound(_lossBound) {
+		LBFGS(Loss& _loss, vector<Example*>& _examples, double* _weight, int wSize, double _lambda2, double _lossBound): loss(_loss),  examples(_examples), weight(_weight), weightSize(wSize), lambda2(_lambda2), lossBound(_lossBound) {
             m = 15;
 			alpha = (double*) malloc(sizeof(double) * m);
 			rho = (double*) malloc(sizeof(double) * m);
@@ -266,30 +116,23 @@ class LBFGS {
 
 bool LBFGS::evalWolfe() {
     //wolfe1 = (loss_sum - previous_loss_sum) / (step_size * g0_d);
-    return lossSum - preLossSum  <= 0.0001 * stepSize * dot(lastGrad, direction);
+    return lossSum - preLossSum  <= lambda2 * stepSize * dot(lastGrad, direction, W_SIZE);
 }
 
 void updateCondition(int* fs, double p, int size) {
     for(int i = 0; i < size; ++i) {
-        condition[fs[i]] += p*(1-p) / SAMPLE_SIZE;
+        CONDITION[fs[i]] += p*(1-p) / SAMPLE_SIZE;
     }
 }
 
 void LBFGS::predict() {
     preLossSum = lossSum;
     lossSum = 0;
-    double reg = lambda2 * dot(weight, weight);
+    double reg = lambda2 * dot(weight, weight, W_SIZE);
     for(Example* example : examples) {
-        // example->prediction = dot(example->features, weight);
         example->prediction = loss.getVal(weight, example->features, example->featureSize);
-        //cout << example->prediction << endl;
         //updateCondition(example->features, example->prediction, example->featureSize);
         double l = loss.getLoss(example->prediction, example->label);
-        //if(l > 1) {
-        //    printf("ERROR: %f\t %f\n", example->prediction, example->label);
-        //    printf("\tERROR: %f\n", dot(example->features, weight));
-        //    printf("\t\ttERROR: %f\n", l);
-        //}
         lossSum += l;
     }
     lossSum += reg;
@@ -304,21 +147,22 @@ void LBFGS::updateGradientWithLambda2(double* grad) {
 double* LBFGS::getGradient() {
     grad = (double*) calloc(W_SIZE, sizeof(double));
     for(Example* example : examples) {
-        loss.updateGradient(example->prediction, example->features, example->label, grad, example->featureSize);
-        //printf("%f\t%f\n", example->prediction, example->label);
+        loss.updateGradient(example->prediction, example->features, example->label, grad, example->featureSize, SAMPLE_SIZE);
     }
     updateGradientWithLambda2(grad);
     return grad;
 }
 
 bool LBFGS::learn() {
-    // xi+1 = xi + dire
     stepForward();
     predict();
-//    //cout << "lossSum and preLossSum: \t" << lossSum << endl;
     END_TIME = clock(); 
     printf("#%d#\tlossSum: %f\t preLossSum: %f\tstepSize:%f\tused time: %f", ROUND, lossSum/SAMPLE_SIZE, preLossSum/SAMPLE_SIZE, stepSize, (END_TIME - START_TIME)/(double)CLOCKS_PER_SEC);
     START_TIME = END_TIME;
+    if(isnan(lossSum)) {
+        printf("Loss sum nan so stop.\n");
+        return false;
+    }
     if(!evalWolfe()) {
         stepBackward();
         printf("\t step back\n");
@@ -331,17 +175,6 @@ bool LBFGS::learn() {
 //        return false;
 //    }
 //    cout << "wolfe1    " << wolfe1 << endl;
-    //if(lossSum > preLossSum || wolfe1 < wolfe1Bound) {
-    //if(lossSum > preLossSum) {
-    //    stepBackward();
-    //    hasBack = true;
-    //    stepSize /= 2;
-    //    return true;
-    //}
-    //if(isnan(lossSum) || lossSum/SAMPLE_SIZE < lossBound) {
-    //    printf("Reach the bound %f so stop.\n", lossBound);
-    //    return false;
-    //}
     if(lossBound == 0) {
         if(isnan(lossSum) || lossSum/preLossSum > 0.999) {
             printf("Decrease in loss in 0.01%% so stop.\n");
@@ -391,18 +224,18 @@ void LBFGS::stepBackward() {
 void LBFGS::cal_and_save_ST() {
 	//  weight = weight - direction * stepSize;
 	// s = thisW - lastW = -direction * step
-    scal(direction, 0 - stepSize);
+    scal(direction, 0 - stepSize, W_SIZE);
     //direction->scal(stepSize);
 	double* ss = direction;
 	// grad = grad - lastGrad, lastGrad = lastGrad + grad
     //grad->pax(-1, *lastGrad);
-    ypax(grad, -1, lastGrad);
+    ypax(grad, -1, lastGrad, W_SIZE);
     //lastGrad->pax(1, *grad);
-    ypax(lastGrad, 1, grad);
+    ypax(lastGrad, 1, grad, W_SIZE);
 	// grad = grad - lastGrad grad will be y
 	double* y = grad;
 	updateST(ss, y);
-    H = dot(ss, y) / dot(y, y);
+    H = dot(ss, y, W_SIZE) / dot(y, y, W_SIZE);
 }
 
 double* LBFGS::getDirection(double* qq) {
@@ -410,16 +243,16 @@ double* LBFGS::getDirection(double* qq) {
 	double* q = (double*) malloc(W_SIZE * sizeof(double));
     memcpy(q, qq, W_SIZE * sizeof(double));
 	int k = min(m, s->size());
-    if(k > 0) rho[k-1] = 1.0 / dot((*s)[k-1], (*t)[k-1]);
+    if(k > 0) rho[k-1] = 1.0 / dot((*s)[k-1], (*t)[k-1], W_SIZE);
 	for (int i = k-1; i >= 0; --i) {
-        alpha[i] = dot(q, (*s)[i]) * rho[i];
-        ypax(q, 0 - alpha[i], (*t)[i]);
+        alpha[i] = dot(q, (*s)[i], W_SIZE) * rho[i];
+        ypax(q, 0 - alpha[i], (*t)[i], W_SIZE);
 	}
-    scal(q, H);
-    //scalWithCondition(q, H);
+    scal(q, H, W_SIZE);
+    //scalWithCondition(q, H, W_SIZE);
 	for (int i = 0; i < k; ++i) {
-        double beta = rho[i] * dot(q, (*t)[i]);
-        ypax(q, alpha[i] - beta, (*s)[i]);
+        double beta = rho[i] * dot(q, (*t)[i], W_SIZE);
+        ypax(q, alpha[i] - beta, (*s)[i], W_SIZE);
 	}
     // shift rho
     if(k == m) {
@@ -437,17 +270,6 @@ void LBFGS::updateST(double* _s, double* _t) {
 }
 
 void splitString(string s, vector<string>& output, const char delimiter) {
-    size_t start=0;
-    size_t end=s.find_first_of(delimiter);
-    while (end != string::npos) {
-        if(end != start)
-            output.push_back(s.substr(start, end-start));
-        start = s.find_first_of(delimiter, end) + 1;
-        end = s.find_first_of(delimiter, start);
-    }
-}
-
-void splitString2(string s, vector<string>& output, const char delimiter) {
     size_t start;
     size_t index = 0;
 
@@ -464,25 +286,6 @@ void splitString2(string s, vector<string>& output, const char delimiter) {
     }
 }
 
-int getIndex(string item) {
-    int index = str_hash(item) & (INDEX_SIZE - 1);
-    weightIndex[index] = 1;
-    return index;
-}
-
-int getIndex2(string s) {
-    int hash = 17;
-    const char* c = s.c_str();
-    while(*c) { hash = hash * 31 + *c; ++c; }
-    int res = hash & (INDEX_SIZE - 1);
-    weightIndex[res] = 1;
-    return res;
-}
-
-int getOnlyIndex(string item) {
-    return str_hash(item) & (INDEX_SIZE - 1);
-}
-
 void splitStringAndHash(string s, const char delimiter, vector<int>& x, double& y) {
     const char* c = s.c_str();
     uint64_t hash = 17;
@@ -497,7 +300,7 @@ void splitStringAndHash(string s, const char delimiter, vector<int>& x, double& 
         if(!*c) break;
         if(*c == '|') {
             group = true;
-            hash = 17;
+            hash = 17 * 31 + *c;
         }
         hash2 = hash;
         while(*c && *c != delimiter) { 
@@ -512,13 +315,13 @@ void splitStringAndHash(string s, const char delimiter, vector<int>& x, double& 
                 first = false;
                 continue;
             }
-            weightIndex[hash2 & (INDEX_SIZE - 1)] = 1;
+            WEIGHT_INDEX[hash2 & (INDEX_SIZE - 1)] = 1;
             x.push_back(hash2 & (INDEX_SIZE - 1));
         }
     }
 } 
 
-bool getNextXY3(vector<int>& x, double& y, ifstream& fo, vector<string>& v) {
+bool getNextXY(vector<int>& x, double& y, istream& fo, vector<string>& v) {
     if(fo.eof()) {
         cout << "reach the file end.1" << endl;
         return false;
@@ -531,57 +334,6 @@ bool getNextXY3(vector<int>& x, double& y, ifstream& fo, vector<string>& v) {
     }
     x.clear();
     splitStringAndHash(str, ' ', x, y);
-    return true;
-}
-
-bool getNextXY(vector<int>& x, double& y, ifstream& fo, vector<string>& v) {
-    if(fo.eof()) {
-        cout << "reach the file end.1" << endl;
-        return false;
-    }
-    string str;
-    getline(fo, str);
-    if(str.length() < 2) {
-        cout << "reach the file end.2" << endl;
-        return false;
-    }
-    v.clear();
-    splitString(str, v, ' ');
-    x.clear();
-    y = (atoi(v[0].c_str()) == 1) ? 1.0 : 0;
-    string prefix;
-    for(int i = 1; i < v.size(); ++i) {
-        if(v[i].c_str()[0] != '|') {
-            x.push_back(getIndex2(prefix + v[i]));
-        } else {
-            prefix = v[i];
-        }
-    }
-    return true;
-}
-
-bool getNextXY2(vector<int>& x, double& y, istream& fo, vector<string>& v) {
-    string str;
-    if(!getline(fo, str)) {
-        cout << "reach the file end.1" << endl;
-        return false;
-    }
-    if(str.length() < 2) {
-        cout << "reach the file end.2" << endl;
-        return false;
-    }
-    v.clear();
-    splitString(str, v, ' ');
-    x.clear();
-    y = (atoi(v[0].c_str()) == 1) ? 1.0 : 0;
-    string prefix;
-    for(int i = 1; i < v.size(); ++i) {
-        if(v[i].c_str()[0] != '|') {
-            x.push_back(getIndex(prefix + v[i]));
-        } else {
-            prefix = v[i];
-        }
-    }
     return true;
 }
 
@@ -644,7 +396,6 @@ void outputAcu(double* weight, Loss& ll, char* testfile) {
     }
     fo.close();
     fw.close();
-    cout << "avg sum: " << allLoss << endl;
     cout << "avg loss: " << allLoss / sampleSize << endl;
     cout << "count percent: " << ((double) count) / sampleSize << endl;
     cout << "count: " << count << endl;
@@ -653,80 +404,56 @@ void outputAcu(double* weight, Loss& ll, char* testfile) {
     cout << "sampleSize: " << sampleSize << endl;
 }
 
-void loadExamples(vector<Example*>& examples, char* filename) {
-    ifstream fo;
-    fo.open(filename);
+void loadExamples(vector<Example*>& examples, istream& f) {
     vector<int> xx;
     double yy;
     vector<string> v;
-    while(getNextXY3(xx, yy, fo, v)) {
+    while(getNextXY(xx, yy, f, v)) {
         Example* example = new Example(xx);
         example->label = yy;
         examples.push_back(example);
     }
-    fo.close();
-}
-
-void loadExamples2(vector<Example*>& examples) {
-    vector<int> xx;
-    double yy;
-    vector<string> v;
-    while(getNextXY2(xx, yy, cin, v)) {
-        Example* example = new Example(xx);
-        example->label = yy;
-        examples.push_back(example);
-    }
-}
-
-void outputPredictions(vector<Example*>& examples) {
-    cout << "predictions" << endl;
-    for(Example* example : examples) {
-        printf("%f\t", example->prediction);
-    }
-    printf("\n");
-}
-
-void saveModel(double* weight) {
-    ofstream fo;
-    fo.open("my.model");
-    fo << INDEX_BIT << endl;
-    for(int i = 0; i < 1 << INDEX_BIT; ++i) {
-        if(weightIndex[i] != 0)
-            fo << i  << ':' << weight[weightIndex[i]] << endl;
-    }
-    fo.close();
 }
 
 void initgap(vector<Example*>& examples) {
     cout << "initgap begin" << endl;
     int count = 0;
     for(int i = 0; i < INDEX_SIZE; ++i) {
-        if(weightIndex[i] == 1) {
-            weightIndex[i] = count++;
+        if(WEIGHT_INDEX[i] == 1) {
+            WEIGHT_INDEX[i] = count++;
+        } else {
+            WEIGHT_INDEX[i] = -1;
         }
     }
     WEIGHT = (double*) calloc(count, sizeof(double));
-    condition = (double*) calloc(count, sizeof(double));
+    CONDITION = (double*) calloc(count, sizeof(double));
     W_SIZE = count;
     cout << "Initgap finish. After hash feature size is: " << count << endl;
     for(Example* example : examples) {
         for(int i = 0; i < example->featureSize; ++i) {
-            example->features[i] = weightIndex[example->features[i]];
+            example->features[i] = WEIGHT_INDEX[example->features[i]];
         }
     }
 }
 
-void test(char* filename, double lambda2, double lossBound) {
+void lbfgs_main(char* filename, double lambda2, double lossBound) {
     cout << "load examples." << endl;
     vector<Example*> examples;
     int start = clock();
-    loadExamples(examples, filename);
+    if(filename == NULL) {
+        loadExamples(examples, cin);
+    } else {
+        ifstream fo;
+        fo.open(filename);
+        loadExamples(examples, fo);
+        fo.close();
+    }
     initgap(examples);
     cout << "load examples cost " << (clock() - start)/(double)CLOCKS_PER_SEC << endl;
     printf("example size is : %ld\n", examples.size());
     SAMPLE_SIZE = examples.size();
-    LogLoss2 ll;
-	LBFGS lbfgs(ll, examples, WEIGHT, lambda2, lossBound);
+    LogLoss ll;
+	LBFGS lbfgs(ll, examples, WEIGHT, W_SIZE, lambda2, lossBound);
     cout << "begin learn" << endl;
     start = clock();
     lbfgs.init();
@@ -735,37 +462,7 @@ void test(char* filename, double lambda2, double lossBound) {
     start = end;
     bool flag = false;
     int LEADN_START = clock();
-    for(int i = 0; i < 100000; ++i) {
-        START_TIME = clock();
-    	if(!lbfgs.learn()) {
-            break;
-        }
-        ++ROUND;
-    }
-    printf("Learned finished, used %f.\n", (clock() - LEARN_START) / (double) CLOCKS_PER_SEC);
-    saveModel(WEIGHT);
-}
-
-void test2(double lambda2, double lossBound) {
-    cout << "load examples." << endl;
-    vector<Example*> examples;
-    int start = clock();
-    loadExamples2(examples);
-    initgap(examples);
-    cout << "load examples cost " << (clock() - start)/(double)CLOCKS_PER_SEC << endl;
-    printf("example size is : %ld\n", examples.size());
-    SAMPLE_SIZE = examples.size();
-    LogLoss2 ll;
-	LBFGS lbfgs(ll, examples, WEIGHT, lambda2, lossBound);
-    cout << "begin learn" << endl;
-    start = clock();
-    lbfgs.init();
-    int end = clock();
-    printf("init used %f\n", (end - start)/(double)CLOCKS_PER_SEC);
-    start = end;
-    bool flag = false;
-    int LEADN_START = clock();
-    for(int i = 0; i < 100000; ++i) {
+    for(int i = 0; i < 1000; ++i) {
         START_TIME = clock();
     	if(!lbfgs.learn()) {
             break;
@@ -790,10 +487,11 @@ double* loadModel() {
     while(!fr.eof()) {
         getline(fr, str);
         v.clear();
-        splitString2(str, v, ':');
+        splitString(str, v, ':');
         if(v.size() < 2) break;
         int index = atoi(v[0].c_str());
         WEIGHT[index] = atof(v[1].c_str());
+        cout << index << "\t" << WEIGHT[index] << endl;
     }
     return WEIGHT;
 }
@@ -802,17 +500,8 @@ int main(int argc, char* argv[]) {
     int start_time = clock();
     char* filename = argv[1];
     string mode(filename);
-    if(mode == "cat") {
-        INDEX_BIT = atoi(argv[2]);
-        INDEX_SIZE = 1 << INDEX_BIT;
-        weightIndex = (int*) calloc(INDEX_SIZE, sizeof(int));
-        test2(0, 0);
-        cout << "finish program." << endl;
-        cout << "Used time: " << (clock() - start_time)/double(CLOCKS_PER_SEC) << endl; 
-        return 0;
-    }
     if(mode == "load") {
-        LogLoss2 ll;
+        LogLoss ll;
         double* weight = loadModel();
         outputAcu(weight, ll, argv[2]);
     } else {
@@ -820,8 +509,12 @@ int main(int argc, char* argv[]) {
         double lossBound = atof(argv[3]);
         INDEX_BIT = atoi(argv[4]);
         INDEX_SIZE = 1 << INDEX_BIT;
-        weightIndex = (int*) calloc(INDEX_SIZE, sizeof(int));
-        test(filename, lambda2, lossBound);
+        WEIGHT_INDEX = (int*) calloc(INDEX_SIZE, sizeof(int));
+        if(mode == "cat") {
+            lbfgs_main(NULL, lambda2, lossBound);
+        } else {
+            lbfgs_main(filename, lambda2, lossBound);
+        }
         cout << "finish program." << endl;
         cout << "Used time: " << (clock() - start_time)/double(CLOCKS_PER_SEC) << endl; 
     }
