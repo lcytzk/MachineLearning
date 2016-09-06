@@ -37,8 +37,8 @@ void saveModel(double* weight) {
     ofstream fo;
     fo.open("my.model");
     fo << INDEX_BIT << endl;
-    for(int i = 0; i < 1 << INDEX_BIT; ++i) {
-        if(WEIGHT_INDEX[i] != 0)
+    for(int i = 0; i < INDEX_SIZE; ++i) {
+        if(WEIGHT_INDEX[i] != -1)
             fo << i  << ':' << weight[WEIGHT_INDEX[i]] << endl;
     }
     fo.close();
@@ -300,7 +300,7 @@ void splitStringAndHash(string s, const char delimiter, vector<int>& x, double& 
         if(!*c) break;
         if(*c == '|') {
             group = true;
-            hash = 17;
+            hash = 17 * 31 + *c;
         }
         hash2 = hash;
         while(*c && *c != delimiter) { 
@@ -396,7 +396,6 @@ void outputAcu(double* weight, Loss& ll, char* testfile) {
     }
     fo.close();
     fw.close();
-    cout << "avg sum: " << allLoss << endl;
     cout << "avg loss: " << allLoss / sampleSize << endl;
     cout << "count percent: " << ((double) count) / sampleSize << endl;
     cout << "count: " << count << endl;
@@ -422,6 +421,8 @@ void initgap(vector<Example*>& examples) {
     for(int i = 0; i < INDEX_SIZE; ++i) {
         if(WEIGHT_INDEX[i] == 1) {
             WEIGHT_INDEX[i] = count++;
+        } else {
+            WEIGHT_INDEX[i] = -1;
         }
     }
     WEIGHT = (double*) calloc(count, sizeof(double));
@@ -490,6 +491,7 @@ double* loadModel() {
         if(v.size() < 2) break;
         int index = atoi(v[0].c_str());
         WEIGHT[index] = atof(v[1].c_str());
+        cout << index << "\t" << WEIGHT[index] << endl;
     }
     return WEIGHT;
 }
