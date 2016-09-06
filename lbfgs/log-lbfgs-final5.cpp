@@ -31,6 +31,7 @@ int INDEX_BIT = 18;
 int INDEX_SIZE;
 int* weightIndex;
 double* WEIGHT;
+double* condition;
 int* gap;
 
 void outputModel(double* w, int size) {
@@ -58,6 +59,12 @@ float norm(double* x) {
 void scal(double* direction, double stepSize) {
     for(int i = 0; i < W_SIZE; ++i) {
         direction[i] *= stepSize;
+    }
+}
+
+void scalWithCondition(double* direction, double stepSize) {
+    for(int i = 0; i < W_SIZE; ++i) {
+        direction[i] *= stepSize * condition[i];
     }
 }
 
@@ -227,10 +234,16 @@ class LogLoss2 : public Loss {
 };
 
 double LogLoss2::getVal(double* w, vector<int>& _x) {
+    //double res = dot(_x, w);
+    //if(res > 1) return 1;
+    //return res < 0 ? 0 : res;
     return 1 / (1 + exp(-dot(_x, w)));
 }
 
 double LogLoss2::getVal(double* w, int* _x, int size) {
+    //double res = dot(_x, w, size);
+    //if(res > 1) return 1;
+    //return res < 0 ? 0 : res;
     return 1 / (1 + exp(-dot(_x, w, size)));
 }
 
@@ -328,6 +341,12 @@ bool LBFGS::evalWolfe() {
     return lossSum - preLossSum  <= 0.0001 * stepSize * dot(lastGrad, direction);
 }
 
+void updateCondition(int* fs, double p, int size) {
+    for(int i = 0; i < size; ++i) {
+        condition[fs[i]] += p*(1-p) / SAMPLE_SIZE;
+    }
+}
+
 void LBFGS::predict() {
     preLossSum = lossSum;
     lossSum = 0;
@@ -335,6 +354,7 @@ void LBFGS::predict() {
     for(Example* example : examples) {
         // example->prediction = dot(example->features, weight);
         example->prediction = loss.getVal(weight, example->features, example->featureSize);
+        //updateCondition(example->features, example->prediction, example->featureSize);
         double l = loss.getLoss(example->prediction, example->label);
         //if(l > 1) {
         //    printf("ERROR: %f\t %f\n", example->prediction, example->label);
@@ -466,6 +486,7 @@ double* LBFGS::getDirection(double* qq) {
         ypax(q, 0 - alpha[i], (*t)[i]);
 	}
     scal(q, H);
+    //scalWithCondition(q, H);
 	for (int i = 0; i < k; ++i) {
         double beta = rho[i] * dot(q, (*t)[i]);
         ypax(q, alpha[i] - beta, (*s)[i]);
@@ -497,12 +518,39 @@ void splitString(string s, vector<string>& output, const char delimiter) {
     }
 }
 
+void splitString2(string s, vector<string>& output, const char delimiter) {
+    size_t start;
+    size_t index = 0;
+
+    while(index != string::npos) {
+        index = s.find_first_not_of(delimiter, index);
+        if(index == string::npos) break;
+        start = index;
+        index = s.find_first_of(delimiter, index);
+        if(index == string::npos) {
+            output.push_back(s.substr(start, s.size() - start));
+            break;
+        }
+        output.push_back(s.substr(start, index - start));
+    }
+}
+
 int getIndex(string item) {
     //map<string, int>::iterator it = table.find(item);
     int index = str_hash(item) & (INDEX_SIZE - 1);
     //cout << index << endl;
     weightIndex[index] = 1;
     return index;
+}
+
+int getIndex2(string s) {
+    int hash = 17;
+    const char* c = s.c_str();
+    while(*c) { hash = hash * 31 + *c; ++c; }
+    //printf("Hash %d\n", hash & (INDEX_SIZE - 1));
+    int res = hash & (INDEX_SIZE - 1);
+    weightIndex[res] = 1;
+    return res;
 }
 
 int getOnlyIndex(string item) {
@@ -528,7 +576,7 @@ bool getNextXY(vector<int>& x, double& y, ifstream& fo, vector<string>& v) {
     string prefix;
     for(int i = 1; i < v.size(); ++i) {
         if(v[i].c_str()[0] != '|') {
-            x.push_back(getIndex(prefix + v[i]));
+            x.push_back(getIndex2(prefix + v[i]));
         } else {
             prefix = v[i];
         }
@@ -558,6 +606,57 @@ bool getNextXY2(vector<int>& x, double& y, istream& fo, vector<string>& v) {
             prefix = v[i];
         }
     }
+    return true;
+}
+
+void splitStringAndHash(string s, const char delimiter, vector<int>& x, double& y) {
+    const char* c = s.c_str();
+    uint64_t hash = 17;
+    uint64_t hash2 = 17;
+    bool first = true;
+    bool group = false;
+    
+    y = atoi(s.substr(0, 2).c_str());
+
+    while(*c) {
+        while(*c && *c == delimiter) { ++c; }
+        if(!*c) break;
+        if(*c == '|') {
+            group = true;
+            hash = 17;
+        }
+        hash2 = hash;
+        while(*c && *c != delimiter) { 
+            hash2 = hash2 * 31 + *c;
+            ++c;
+        }
+        if(group) { 
+            hash = hash2; 
+            group = false; 
+        } else {
+            if(first) {
+                first = false;
+                continue;
+            }
+            weightIndex[hash2 & (INDEX_SIZE - 1)] = 1;
+            x.push_back(hash2 & (INDEX_SIZE - 1));
+        }
+    }
+} 
+
+bool getNextXY3(vector<int>& x, double& y, ifstream& fo, vector<string>& v) {
+    if(fo.eof()) {
+        cout << "reach the file end.1" << endl;
+        return false;
+    }
+    string str;
+    getline(fo, str);
+    if(str.length() < 2) {
+        cout << "reach the file end.2" << endl;
+        return false;
+    }
+    x.clear();
+    splitStringAndHash(str, ' ', x, y);
     return true;
 }
 
@@ -629,7 +728,6 @@ void outputAcu(double* weight, Loss& ll, char* testfile) {
     cout << "count1: " << count1 << endl;
     cout << "count1_shot: " << count1_shot << endl;
     cout << "sampleSize: " << sampleSize << endl;
-   // LBFGS.weight.saveToFile();
 }
 
 void loadExamples(vector<Example*>& examples, char* filename) {
@@ -638,7 +736,7 @@ void loadExamples(vector<Example*>& examples, char* filename) {
     vector<int> xx;
     double yy;
     vector<string> v;
-    while(getNextXY(xx, yy, fo, v)) {
+    while(getNextXY3(xx, yy, fo, v)) {
         Example* example = new Example(xx);
         example->label = yy;
         examples.push_back(example);
@@ -683,7 +781,7 @@ void outputTable() {
 }
 
 void initgap(vector<Example*>& examples) {
-    cout << "initgap" << endl;
+    cout << "initgap begin" << endl;
     int count = 0;
     for(int i = 0; i < INDEX_SIZE; ++i) {
         if(weightIndex[i] == 1) {
@@ -691,11 +789,13 @@ void initgap(vector<Example*>& examples) {
         }
     }
     WEIGHT = (double*) calloc(count, sizeof(double));
+    condition = (double*) calloc(count, sizeof(double));
     W_SIZE = count;
-    cout << "initgap finish    " << count << endl;
+    cout << "Initgap finish. After hash feature size is: " << count << endl;
     for(Example* example : examples) {
         for(int i = 0; i < example->featureSize; ++i) {
             example->features[i] = weightIndex[example->features[i]];
+            cout << example->features[i] << endl;
         }
     }
 }
@@ -709,8 +809,6 @@ void test(char* filename, double lambda2, double lossBound) {
     cout << "load examples cost " << (clock() - start)/(double)CLOCKS_PER_SEC << endl;
     printf("example size is : %ld\n", examples.size());
     SAMPLE_SIZE = examples.size();
-    //printf("table size is : %ld\n", W_SIZE);
-//    for(auto it = table.begin(); it != table.end(); ++it) cout << "key\t" << it->first << "\tvalue\t" << it->second << endl;
     LogLoss2 ll;
 	LBFGS lbfgs(ll, examples, WEIGHT, lambda2, lossBound);
     cout << "begin learn" << endl;
@@ -719,8 +817,6 @@ void test(char* filename, double lambda2, double lossBound) {
     int end = clock();
     printf("init used %f\n", (end - start)/(double)CLOCKS_PER_SEC);
     start = end;
-    //outputModel(weight, W_SIZE);
-    //outputPredictions(examples);
     bool flag = false;
     int LEADN_START = clock();
     for(int i = 0; i < 100000; ++i) {
@@ -729,14 +825,9 @@ void test(char* filename, double lambda2, double lossBound) {
             break;
         }
         ++ROUND;
-        //outputModel(weight, W_SIZE);
-        //outputPredictions(examples);
     }
-    //cout << "One pass used time: " << (clock() - start)/double(CLOCKS_PER_SEC) << endl; 
-    //outputModel(weight, W_SIZE);
     printf("Learned finished, used %f.\n", (clock() - LEARN_START) / (double) CLOCKS_PER_SEC);
     saveModel(WEIGHT);
-//    outputAcu(weight, ll, filename);
 }
 
 void test2(double lambda2, double lossBound) {
@@ -748,8 +839,6 @@ void test2(double lambda2, double lossBound) {
     cout << "load examples cost " << (clock() - start)/(double)CLOCKS_PER_SEC << endl;
     printf("example size is : %ld\n", examples.size());
     SAMPLE_SIZE = examples.size();
-    //printf("table size is : %ld\n", W_SIZE);
-//    for(auto it = table.begin(); it != table.end(); ++it) cout << "key\t" << it->first << "\tvalue\t" << it->second << endl;
     LogLoss2 ll;
 	LBFGS lbfgs(ll, examples, WEIGHT, lambda2, lossBound);
     cout << "begin learn" << endl;
@@ -758,8 +847,6 @@ void test2(double lambda2, double lossBound) {
     int end = clock();
     printf("init used %f\n", (end - start)/(double)CLOCKS_PER_SEC);
     start = end;
-    //outputModel(weight, W_SIZE);
-    //outputPredictions(examples);
     bool flag = false;
     int LEADN_START = clock();
     for(int i = 0; i < 100000; ++i) {
@@ -768,14 +855,9 @@ void test2(double lambda2, double lossBound) {
             break;
         }
         ++ROUND;
-        //outputModel(weight, W_SIZE);
-        //outputPredictions(examples);
     }
-    //cout << "One pass used time: " << (clock() - start)/double(CLOCKS_PER_SEC) << endl; 
-    //outputModel(weight, W_SIZE);
     printf("Learned finished, used %f.\n", (clock() - LEARN_START) / (double) CLOCKS_PER_SEC);
     saveModel(WEIGHT);
-//    outputAcu(weight, ll, filename);
 }
 
 double* loadModel() {
@@ -786,22 +868,16 @@ double* loadModel() {
     getline(fr, str);
     INDEX_BIT = atoi(str.c_str());
     INDEX_SIZE = 1 << INDEX_BIT;
-    WEIGHT = (double*) calloc(1 << INDEX_BIT, sizeof(double));
+    WEIGHT = (double*) calloc(INDEX_SIZE, sizeof(double));
     int i = 0;
     vector<string> v;
     while(!fr.eof()) {
         getline(fr, str);
         v.clear();
-        splitString(str, v, '#');
-cout <<  v[0] << endl;
-cout <<  v[1] << endl;
-        if(v.size() < 2) {
-cout << "size less 2 " << endl;
-            break;
-}
+        splitString2(str, v, ':');
+        if(v.size() < 2) break;
         int index = atoi(v[0].c_str());
         WEIGHT[index] = atof(v[1].c_str());
-cout << index << WEIGHT[index] << endl;
     }
     return WEIGHT;
 }
