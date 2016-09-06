@@ -143,11 +143,7 @@ class Loss {
 		virtual double getLoss(double* w, vector<int>& _x, double _y) = 0;
         virtual double getVal(double* w, vector<int>& _x) = 0;
         virtual double getVal(double* w, int* _x, int size) = 0;
-        virtual double getFirstDeri(double* w, vector<int>& _x, double _y) = 0;
         virtual double getFirstDeri(double prediction, double _y) = 0;
-		virtual double* getGradient(double* w, vector<int>& _x, double _y) = 0;
-        virtual double* getGradient(double prediction, vector<int>& _x, double _y) = 0;
-        virtual void updateGradient(double prediction, vector<int>& _x, double _y, double* t) = 0;
         virtual void updateGradient(double prediction, int* _x, double _y, double* t, int size) = 0;
 };
 
@@ -157,11 +153,7 @@ class LogLoss : public Loss {
         double getLoss(double* w, vector<int>& _x, double _y);
         double getVal(double* w, vector<int>& _x);
         double getVal(double* w, int* _x, int size);
-        double getFirstDeri(double* w, vector<int>& _x, double _y);
         double getFirstDeri(double prediction, double _y);
-        double* getGradient(double* w, vector<int>& _x, double _y);
-        double* getGradient(double prediction, vector<int>& _x, double _y);
-        void updateGradient(double prediction, vector<int>& _x, double _y, double* t);
         void updateGradient(double prediction, int* _x, double _y, double* t, int size);
 };
 
@@ -182,34 +174,8 @@ double LogLoss::getLoss(double prediction, double _y) {
     return log(1 + exp((1 - 2 *_y) * prediction));
 }
 
-double LogLoss::getFirstDeri(double* w, vector<int>& _x, double _y) {
-    return (1 - 2 *_y) / (1.0 + exp((2 *_y - 1) * dot(_x, w)));
-}
-
 double LogLoss::getFirstDeri(double prediction, double _y) {
     return (1 - 2 *_y) / (1.0 + exp((2 *_y - 1) * prediction));
-}
-
-double* LogLoss::getGradient(double* w, vector<int>& _x, double _y) {
-	double* t = (double*) calloc(W_SIZE, sizeof(double));
-	for (int i = 0; i < _x.size(); ++i) {
-        t[_x[i]] = getFirstDeri(w, _x, _y);
-	}
-	return t;
-}
-
-double* LogLoss::getGradient(double prediction, vector<int>& _x, double _y) {
-    double* t = (double*) calloc(W_SIZE, sizeof(double));
-    for (int i = 0; i < _x.size(); ++i) {
-        t[_x[i]] = getFirstDeri(prediction, _y);
-    }
-    return t;
-}
-
-void LogLoss::updateGradient(double prediction, vector<int>& _x, double _y, double* t) {
-    for (int i = 0; i < _x.size(); ++i) {
-        t[_x[i]] += getFirstDeri(prediction, _y) / SAMPLE_SIZE;
-    }
 }
 
 void LogLoss::updateGradient(double prediction, int* _x, double _y, double* t, int size) {
@@ -224,11 +190,7 @@ class LogLoss2 : public Loss {
         double getLoss(double* w, vector<int>& _x, double _y);
         double getVal(double* w, vector<int>& _x);
         double getVal(double* w, int* _x, int size);
-        double getFirstDeri(double* w, vector<int>& _x, double _y);
         double getFirstDeri(double prediction, double _y);
-        double* getGradient(double* w, vector<int>& _x, double _y);
-        double* getGradient(double prediction, vector<int>& _x, double _y);
-        void updateGradient(double prediction, vector<int>& _x, double _y, double* t);
         void updateGradient(double prediction, int* _x, double _y, double* t, int size);
 };
 
@@ -248,34 +210,8 @@ double LogLoss2::getLoss(double prediction, double _y) {
     return 0 - (_y == 1 ? log(prediction) : log(1 - prediction));
 }
 
-double LogLoss2::getFirstDeri(double* w, vector<int>& _x, double _y) {
-    return (1 - 2 *_y) / (1.0 + exp((2 *_y - 1) * dot(_x, w)));
-}
-
 double LogLoss2::getFirstDeri(double prediction, double _y) {
     return (1 - 2 *_y) / (1.0 + exp((2 *_y - 1) * prediction));
-}
-
-double* LogLoss2::getGradient(double* w, vector<int>& _x, double _y) {
-    double* t = (double*) calloc(W_SIZE, sizeof(double));
-    for (int i = 0; i < _x.size(); ++i) {
-        t[_x[i]] = getFirstDeri(w, _x, _y);
-    }
-    return t;
-}
-
-double* LogLoss2::getGradient(double prediction, vector<int>& _x, double _y) {
-    double* t = (double*) calloc(W_SIZE, sizeof(double));
-    for (int i = 0; i < _x.size(); ++i) {
-        t[_x[i]] = getFirstDeri(prediction, _y);
-    }
-    return t;
-}
-
-void LogLoss2::updateGradient(double prediction, vector<int>& _x, double _y, double* t) {
-    for (int i = 0; i < _x.size(); ++i) {
-        t[_x[i]] += (prediction - _y) / SAMPLE_SIZE;
-    }
 }
 
 void LogLoss2::updateGradient(double prediction, int* _x, double _y, double* t, int size) {
