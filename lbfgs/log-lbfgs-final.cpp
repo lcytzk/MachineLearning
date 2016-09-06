@@ -300,7 +300,7 @@ void splitStringAndHash(string s, const char delimiter, vector<int>& x, double& 
         if(!*c) break;
         if(*c == '|') {
             group = true;
-            hash = 17 * 31 + *c;
+            hash = 17;
         }
         hash2 = hash;
         while(*c && *c != delimiter) { 
