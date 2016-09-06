@@ -1,5 +1,4 @@
 #include <stdlib.h>
-//#include <algorithm>
 #include <memory.h>
 #include <vector>
 #include <iostream>
@@ -23,7 +22,6 @@ int SAMPLE_SIZE = 0;
 int ROUND = 1;
 int START_TIME, END_TIME;
 
-unordered_map<string,int> table;
 hash<string> str_hash;
 
 int W_SIZE;
@@ -219,6 +217,7 @@ void LogLoss::updateGradient(double prediction, int* _x, double _y, double* t, i
         t[_x[i]] += getFirstDeri(prediction, _y) / SAMPLE_SIZE;
     }
 }
+
 class LogLoss2 : public Loss {
     public:
         double getLoss(double prediction, double _y);
@@ -234,16 +233,10 @@ class LogLoss2 : public Loss {
 };
 
 double LogLoss2::getVal(double* w, vector<int>& _x) {
-    //double res = dot(_x, w);
-    //if(res > 1) return 1;
-    //return res < 0 ? 0 : res;
     return 1 / (1 + exp(-dot(_x, w)));
 }
 
 double LogLoss2::getVal(double* w, int* _x, int size) {
-    //double res = dot(_x, w, size);
-    //if(res > 1) return 1;
-    //return res < 0 ? 0 : res;
     return 1 / (1 + exp(-dot(_x, w, size)));
 }
 
@@ -312,7 +305,6 @@ class LBFGS {
         void stepBackward();
         bool evalWolfe();
         void updateGradientWithLambda2(double* grad);
-        bool hasBack = false;
         double lambda2;
 	public:
 		double* weight;
@@ -354,6 +346,7 @@ void LBFGS::predict() {
     for(Example* example : examples) {
         // example->prediction = dot(example->features, weight);
         example->prediction = loss.getVal(weight, example->features, example->featureSize);
+        //cout << example->prediction << endl;
         //updateCondition(example->features, example->prediction, example->featureSize);
         double l = loss.getLoss(example->prediction, example->label);
         //if(l > 1) {
@@ -376,7 +369,7 @@ double* LBFGS::getGradient() {
     grad = (double*) calloc(W_SIZE, sizeof(double));
     for(Example* example : examples) {
         loss.updateGradient(example->prediction, example->features, example->label, grad, example->featureSize);
-        //printf("%f\t%f\t%f\n", example->prediction, example->label, grad[18]);
+        //printf("%f\t%f\n", example->prediction, example->label);
     }
     updateGradientWithLambda2(grad);
     return grad;
@@ -413,16 +406,17 @@ bool LBFGS::learn() {
     //    printf("Reach the bound %f so stop.\n", lossBound);
     //    return false;
     //}
-    if(isnan(lossSum) || lossSum/preLossSum > 0.999) {
-    //if(isnan(lossSum) || lossSum < 0.07) {
-        printf("Decrease in loss in 0.01%% so stop.\n");
-        return false;
+    if(lossBound == 0) {
+        if(isnan(lossSum) || lossSum/preLossSum > 0.999) {
+            printf("Decrease in loss in 0.01%% so stop.\n");
+            return false;
+        }
+    } else {
+        if(isnan(lossSum) || lossSum/SAMPLE_SIZE < lossBound) {
+            printf("Reach the bound %f so stop.\n", lossBound);
+            return false;
+        }
     }
-    // if(hasBack) {
-    //     hasBack = false;
-    //     stepSize *= 2;
-    // }
-    // stepSize =((stepSize + 0.1) > 1) ? stepSize : stepSize + 0.1;
     getGradient();
 //    float grad_norm = norm(grad);
 //    cout << "norm   " << grad_norm << endl;
@@ -498,7 +492,6 @@ double* LBFGS::getDirection(double* qq) {
         }
     }
     direction = q;
-    //outputModel(direction, W_SIZE);
 	return q;
 }
 
@@ -536,9 +529,7 @@ void splitString2(string s, vector<string>& output, const char delimiter) {
 }
 
 int getIndex(string item) {
-    //map<string, int>::iterator it = table.find(item);
     int index = str_hash(item) & (INDEX_SIZE - 1);
-    //cout << index << endl;
     weightIndex[index] = 1;
     return index;
 }
@@ -547,17 +538,66 @@ int getIndex2(string s) {
     int hash = 17;
     const char* c = s.c_str();
     while(*c) { hash = hash * 31 + *c; ++c; }
-    //printf("Hash %d\n", hash & (INDEX_SIZE - 1));
     int res = hash & (INDEX_SIZE - 1);
     weightIndex[res] = 1;
     return res;
 }
 
 int getOnlyIndex(string item) {
-    //map<string, int>::iterator it = table.find(item);
     return str_hash(item) & (INDEX_SIZE - 1);
-    //cout << index << endl;
 }
+
+void splitStringAndHash(string s, const char delimiter, vector<int>& x, double& y) {
+    const char* c = s.c_str();
+    uint64_t hash = 17;
+    uint64_t hash2 = 17;
+    bool first = true;
+    bool group = false;
+    
+    y = (atoi(s.substr(0, 2).c_str()) == 1) ? 1 : 0;
+
+    while(*c) {
+        while(*c && *c == delimiter) { ++c; }
+        if(!*c) break;
+        if(*c == '|') {
+            group = true;
+            hash = 17;
+        }
+        hash2 = hash;
+        while(*c && *c != delimiter) { 
+            hash2 = hash2 * 31 + *c;
+            ++c;
+        }
+        if(group) { 
+            hash = hash2; 
+            group = false; 
+        } else {
+            if(first) {
+                first = false;
+                continue;
+            }
+            weightIndex[hash2 & (INDEX_SIZE - 1)] = 1;
+            x.push_back(hash2 & (INDEX_SIZE - 1));
+        }
+    }
+} 
+
+bool getNextXY3(vector<int>& x, double& y, ifstream& fo, vector<string>& v) {
+    if(fo.eof()) {
+        cout << "reach the file end.1" << endl;
+        return false;
+    }
+    string str;
+    getline(fo, str);
+    if(str.length() < 2) {
+        cout << "reach the file end.2" << endl;
+        return false;
+    }
+    x.clear();
+    splitStringAndHash(str, ' ', x, y);
+    return true;
+}
+
 bool getNextXY(vector<int>& x, double& y, ifstream& fo, vector<string>& v) {
     if(fo.eof()) {
         cout << "reach the file end.1" << endl;
@@ -609,57 +649,6 @@ bool getNextXY2(vector<int>& x, double& y, istream& fo, vector<string>& v) {
     return true;
 }
 
-void splitStringAndHash(string s, const char delimiter, vector<int>& x, double& y) {
-    const char* c = s.c_str();
-    uint64_t hash = 17;
-    uint64_t hash2 = 17;
-    bool first = true;
-    bool group = false;
-    
-    y = atoi(s.substr(0, 2).c_str());
-
-    while(*c) {
-        while(*c && *c == delimiter) { ++c; }
-        if(!*c) break;
-        if(*c == '|') {
-            group = true;
-            hash = 17;
-        }
-        hash2 = hash;
-        while(*c && *c != delimiter) { 
-            hash2 = hash2 * 31 + *c;
-            ++c;
-        }
-        if(group) { 
-            hash = hash2; 
-            group = false; 
-        } else {
-            if(first) {
-                first = false;
-                continue;
-            }
-            weightIndex[hash2 & (INDEX_SIZE - 1)] = 1;
-            x.push_back(hash2 & (INDEX_SIZE - 1));
-        }
-    }
-} 
-
-bool getNextXY3(vector<int>& x, double& y, ifstream& fo, vector<string>& v) {
-    if(fo.eof()) {
-        cout << "reach the file end.1" << endl;
-        return false;
-    }
-    string str;
-    getline(fo, str);
-    if(str.length() < 2) {
-        cout << "reach the file end.2" << endl;
-        return false;
-    }
-    x.clear();
-    splitStringAndHash(str, ' ', x, y);
-    return true;
-}
-
 bool getOnlyNextXY(vector<int>& x, double& y, istream& fo, vector<string>& v) {
     string str;
     if(!getline(fo, str)) {
@@ -701,11 +690,9 @@ void outputAcu(double* weight, Loss& ll, char* testfile) {
     int count1_shot = 0;
     while (getOnlyNextXY(xx, yy, fo, v)) {
         double loss = ll.getLoss(weight, xx, yy);
-        //cout << "prediction  " << ll.getVal(weight, xx) <<endl;
         double prediction1 = ll.getVal(weight, xx);
         double prediction = prediction1 > 0.5 ? 1 : 0;
         allLoss += loss;
-        //cout << loss << endl;
         if (prediction == yy) {
             ++count;
         }
@@ -774,12 +761,6 @@ void saveModel(double* weight) {
     fo.close();
 }
 
-void outputTable() {
-    for(auto it = table.begin(); it != table.end(); ++it) {
-        cout << it->first << endl;
-    }
-}
-
 void initgap(vector<Example*>& examples) {
     cout << "initgap begin" << endl;
     int count = 0;
@@ -795,7 +776,6 @@ void initgap(vector<Example*>& examples) {
     for(Example* example : examples) {
         for(int i = 0; i < example->featureSize; ++i) {
             example->features[i] = weightIndex[example->features[i]];
-            cout << example->features[i] << endl;
         }
     }
 }
