@@ -11,8 +11,8 @@ for line in sys.stdin:
     if len(segs) < 2:
         continue
 
-    score = 1 / (1+math.exp(-float(segs[1])))
-    flag = int(segs[0])
+    score = 1 / (1+math.exp(-float(segs[0])))
+    flag = int(segs[1])
 
     label = flag
     if label > 0:

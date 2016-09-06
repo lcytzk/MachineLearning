@@ -8,7 +8,7 @@ def getT(filename):
     for line in fl:
         line = line.strip()
         line2 = fp.readline().strip()
-        print '%s,%s' % (line, line2)
+        print '%s,%s' % (line2, line)
 
 
 if __name__ == "__main__":
