@@ -13,7 +13,7 @@
 using namespace std;
 
 int LEARN_START = 0;
-double STEP_SIZE = 1;
+double STEP_SIZE = 1.3;
 int SAMPLE_SIZE = 0;    
 int ROUND = 1;
 int START_TIME, END_TIME;
@@ -128,14 +128,13 @@ void updateCondition(int* fs, double p, int size) {
 void LBFGS::predict() {
     preLossSum = lossSum;
     lossSum = 0;
-    double reg = lambda2 * dot(weight, weight, W_SIZE);
+    //double reg = 0.5 * lambda2 * dot(weight, weight, W_SIZE);
     for(Example* example : examples) {
         example->prediction = loss.getVal(weight, example->features, example->featureSize);
         //updateCondition(example->features, example->prediction, example->featureSize);
-        double l = loss.getLoss(example->prediction, example->label);
-        lossSum += l;
+        lossSum += loss.getLoss(example->prediction, example->label);
     }
-    lossSum += reg;
+    //lossSum += reg;
 }
 
 void LBFGS::updateGradientWithLambda2(double* grad) {
@@ -149,7 +148,7 @@ double* LBFGS::getGradient() {
     for(Example* example : examples) {
         loss.updateGradient(example->prediction, example->features, example->label, grad, example->featureSize, SAMPLE_SIZE);
     }
-    updateGradientWithLambda2(grad);
+    //updateGradientWithLambda2(grad);
     return grad;
 }
 
