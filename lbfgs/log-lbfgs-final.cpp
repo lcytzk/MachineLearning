@@ -491,7 +491,6 @@ double* loadModel() {
         if(v.size() < 2) break;
         int index = atoi(v[0].c_str());
         WEIGHT[index] = atof(v[1].c_str());
-        cout << index << "\t" << WEIGHT[index] << endl;
     }
     return WEIGHT;
 }
