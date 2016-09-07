@@ -25,7 +25,9 @@ int INDEX_SIZE;
 int* WEIGHT_INDEX;
 double* WEIGHT;
 double* CONDITION;
-ThreadPool pool(8);
+int THREAD_MAX = 10;
+int BATCH_SIZE = 15;
+ThreadPool pool(THREAD_MAX);
 
 void outputModel(double* w, int size) {
     cout << "model" << endl;
@@ -144,10 +146,11 @@ void LBFGS::predict() {
     lossSum = 0;
     //double reg = 0.5 * lambda2 * dot(weight, weight, W_SIZE);
     vector<future<double>> results;
-    int gap = SAMPLE_SIZE / 10 + 1;
-    for(int i = 0 ; i < 10; ++i) {
+    int gap = SAMPLE_SIZE / BATCH_SIZE + 1;
+    for(int i = 0 ; i < BATCH_SIZE; ++i) {
         int start = gap * i;
         int end = gap * (i + 1);
+        if(start >= SAMPLE_SIZE) break;
         end = end > SAMPLE_SIZE ? SAMPLE_SIZE : end;
         results.emplace_back(
             pool.enqueue( [this, start, end] {
@@ -176,10 +179,11 @@ void LBFGS::updateGradientWithLambda2(double* grad) {
 double* LBFGS::getGradient() {
     grad = (double*) calloc(W_SIZE, sizeof(double));
     vector<future<double*>> results;
-    int gap = SAMPLE_SIZE / 10 + 1;
-    for(int i = 0 ; i < 10; ++i) {
+    int gap = SAMPLE_SIZE / BATCH_SIZE + 1;
+    for(int i = 0 ; i < BATCH_SIZE; ++i) {
         int start = gap * i;
         int end = gap * (i + 1);
+        if(start >= SAMPLE_SIZE) break;
         end = end > SAMPLE_SIZE ? SAMPLE_SIZE : end;
         results.emplace_back(
             pool.enqueue( [this, start, end] {
