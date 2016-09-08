@@ -129,18 +129,6 @@ void updateCondition(int* fs, double p, int size) {
     }
 }
 
-//void LBFGS::predict() {
-//    preLossSum = lossSum;
-//    lossSum = 0;
-//    //double reg = 0.5 * lambda2 * dot(weight, weight, W_SIZE);
-//    for(Example* example : examples) {
-//        example->prediction = loss.getVal(weight, example->features, example->featureSize);
-//        //updateCondition(example->features, example->prediction, example->featureSize);
-//        lossSum += loss.getLoss(example->prediction, example->label);
-//    }
-//    //lossSum += reg;
-//}
-
 void LBFGS::predict() {
     preLossSum = lossSum;
     lossSum = 0;
@@ -206,15 +194,6 @@ double* LBFGS::getGradient() {
     //updateGradientWithLambda2(grad);
     return grad;
 }
-
-//double* LBFGS::getGradient() {
-//    grad = (double*) calloc(W_SIZE, sizeof(double));
-//    for(Example* example : examples) {
-//        loss.updateGradient(example->prediction, example->features, example->label, grad, example->featureSize, SAMPLE_SIZE);
-//    }
-//    //updateGradientWithLambda2(grad);
-//    return grad;
-//}
 
 bool LBFGS::learn() {
     stepForward();
@@ -467,7 +446,7 @@ void outputAcu(double* weight, Loss& ll, char* testfile) {
     cout << "sampleSize: " << sampleSize << endl;
 }
 
-void loadExamples(vector<Example*>& examples, istream& f) {
+void _loadExamples(vector<Example*>& examples, istream& f) {
     vector<int> xx;
     double yy;
     while(getNextXY(xx, yy, f)) {
@@ -477,25 +456,60 @@ void loadExamples(vector<Example*>& examples, istream& f) {
     }
 }
 
-void _loadExamples(vector<Example*>& examples, istream& f) {
-    vector<future<Example*>> exampleFutures;
-    string str;
+void loadExamples(vector<Example*>& examples, istream& f) {
+    vector<future<vector<Example*>*>> results;
+    string** strs = new string*[1001];
+    string* str;
+    int count = 0;
     while(!f.eof()) {
-        getline(f, str);
-        if(str.size() < 2) break;
-        exampleFutures.emplace_back(
-            pool.enqueue( [str] {
+        str = new string();
+        getline(f, *str);
+        if(str->size() < 3) break;
+        strs[count] = str;
+        count = (count + 1) % 1000;
+        if(!count) {
+            results.emplace_back(
+                pool.enqueue( [strs] {
+                    vector<Example*>* exs = new vector<Example*>();
+                    vector<int> x;
+                    double y;
+                    for(int i = 0; i < 1000; ++i) {
+                        x.clear();
+                        splitStringAndHash(*strs[i], ' ', x, y);
+                        free(strs[i]);
+                        Example* example = new Example(x);
+                        example->label = y;
+                        exs->push_back(example);
+                    }
+                    free(strs);
+                    return exs;
+                })
+            );
+            strs = new string*[1001];
+        }
+    }
+    if(count) {
+        results.emplace_back(
+            pool.enqueue( [strs, count] {
+                vector<Example*>* exs = new vector<Example*>();
                 vector<int> x;
                 double y;
-                splitStringAndHash(str, ' ', x, y);
-                Example* example = new Example(x);
-                example->label = y;
-                return example;
+                for(int i = 0; i < count; ++i) {
+                    x.clear();
+                    splitStringAndHash(*strs[i], ' ', x, y);
+                    free(strs[i]);
+                    Example* example = new Example(x);
+                    example->label = y;
+                    exs->push_back(example);
+                }
+                free(strs);
+                return exs;
             })
         );
     }
-    for(auto && job : exampleFutures) {
-        examples.push_back(job.get());
+    for(auto && job : results) {
+        vector<Example*>* res = job.get();
+        examples.insert(examples.begin(), res->begin(), res->end());
     }
 }
 
