@@ -2,6 +2,9 @@
 #define __LBFGS_UTIL__
 
 #include <math.h>
+#include <vector>
+#include "ThreadPool.h"
+
 using namespace std;
 
 double dot(double* x, double* y, int size) {
@@ -10,6 +13,31 @@ double dot(double* x, double* y, int size) {
         res += x[i] * y[i];
     }
     return res;
+}
+
+double dot(double* x, double* y, int size, ThreadPool &pool, int batchSize) {
+    vector<future<double>> results;
+    int gap = size / batchSize + 1;
+    for(int i = 0 ; i < batchSize; ++i) {
+        int start = gap * i;
+        int end = gap * (i + 1);
+        if(start >= size) break;
+        end = end > size ? size : end;
+        results.emplace_back( 
+            pool.enqueue( [x, y, start, end] {
+                double res;
+                for(int i = start; i < end; ++i) {
+                    res += x[i] * y[i];
+                }
+                return res;
+            })
+        );
+    }
+    double ret = 0;
+    for(auto && result : results) {
+        ret += result.get();
+    }
+    return ret;
 }
 
 float norm(double* x, int size) {
@@ -22,9 +50,51 @@ void scal(double* direction, double stepSize, int size) {
     }
 }
 
+void scal(double* direction, double stepSize, int size, ThreadPool &pool, int batchSize) {
+    vector<future<void>> results;
+    int gap = size / batchSize + 1;
+    for(int i = 0 ; i < batchSize; ++i) {
+        int start = gap * i;
+        int end = gap * (i + 1);
+        if(start >= size) break;
+        end = end > size ? size : end;
+        results.emplace_back( 
+            pool.enqueue( [direction, stepSize, start, end] {
+                for(int i = start; i < end; ++i) {
+                    direction[i] *= stepSize;
+                }
+            })
+        );
+    }
+    for(auto && result : results) {
+        result.wait();
+    }
+}
+
 void scalWithCondition(double* direction, double* condition, double stepSize, int size) {
     for(int i = 0; i < size; ++i) {
         direction[i] *= stepSize * condition[i];
+    }
+}
+
+void ypax(double* y, double alpha, double* x, int size, ThreadPool &pool, int batchSize) {
+    vector<future<void>> results;
+    int gap = size / batchSize + 1;
+    for(int i = 0 ; i < batchSize; ++i) {
+        int start = gap * i;
+        int end = gap * (i + 1);
+        if(start >= size) break;
+        end = end > size ? size : end;
+        results.emplace_back( 
+            pool.enqueue( [y, alpha, x, start, end] {
+                for(int i = start; i < end; ++i) {
+                    y[i] += alpha * x[i];
+                }
+            })
+        );
+    }
+    for(auto && result : results) {
+        result.wait();
     }
 }
 
