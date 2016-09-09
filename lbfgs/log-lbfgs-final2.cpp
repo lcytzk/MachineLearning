@@ -10,6 +10,7 @@
 
 #include "lbfgs_util.h"
 #include "ThreadPool.h"
+#include "ls.h"
 
 using namespace std;
 
@@ -446,16 +447,6 @@ void outputAcu(double* weight, Loss& ll, char* testfile) {
     cout << "sampleSize: " << sampleSize << endl;
 }
 
-void _loadExamples(vector<Example*>& examples, istream& f) {
-    vector<int> xx;
-    double yy;
-    while(getNextXY(xx, yy, f)) {
-        Example* example = new Example(xx);
-        example->label = yy;
-        examples.push_back(example);
-    }
-}
-
 void loadExamples(vector<Example*>& examples, istream& f) {
     vector<future<vector<Example*>*>> results;
     string** strs = new string*[1001];
@@ -513,6 +504,18 @@ void loadExamples(vector<Example*>& examples, istream& f) {
     }
 }
 
+void loadExamples(vector<Example*>& examples, vector<string>& files) {
+    ifstream fo;
+    int start;
+    for(auto file : files) {
+        start = clock();
+        fo.open(file);
+        loadExamples(examples, fo);
+        fo.close();
+        printf("Load %s finished.   Used %f time.\n", file.c_str(), (clock() - start) / (double) CLOCKS_PER_SEC);
+    }
+}
+
 void initgap(vector<Example*>& examples) {
     cout << "initgap begin" << endl;
     int count = 0;
@@ -534,29 +537,13 @@ void initgap(vector<Example*>& examples) {
     }
 }
 
-void lbfgs_main(char* filename, double lambda2, double lossBound) {
-    cout << "load examples." << endl;
-    vector<Example*> examples;
-    int start = clock();
-    if(filename == NULL) {
-        loadExamples(examples, cin);
-    } else {
-        ifstream fo;
-        fo.open(filename);
-        loadExamples(examples, fo);
-        fo.close();
-    }
-    initgap(examples);
-    cout << "load examples cost " << (clock() - start)/(double)CLOCKS_PER_SEC << endl;
-    printf("example size is : %ld\n", examples.size());
+void do_main(vector<Example*>& examples, double lambda2, double lossBound) {
+    int start, end;
     SAMPLE_SIZE = examples.size();
     LogLoss ll;
 	LBFGS lbfgs(ll, examples, WEIGHT, W_SIZE, lambda2, lossBound);
     cout << "begin learn" << endl;
-    start = clock();
     lbfgs.init();
-    int end = clock();
-    printf("init used %f\n", (end - start)/(double)CLOCKS_PER_SEC);
     start = end;
     bool flag = false;
     int LEADN_START = clock();
@@ -569,6 +556,29 @@ void lbfgs_main(char* filename, double lambda2, double lossBound) {
     }
     printf("Learned finished, used %f.\n", (clock() - LEARN_START) / (double) CLOCKS_PER_SEC);
     saveModel(WEIGHT);
+}
+
+void lbfgs_main(double lambda2, double lossBound) {
+    cout << "load examples." << endl;
+    int start = clock();
+    vector<Example*> examples;
+    loadExamples(examples, cin);
+    initgap(examples);
+    cout << "load examples cost " << (clock() - start)/(double)CLOCKS_PER_SEC << endl;
+    printf("example size is : %ld\n", examples.size());
+    do_main(examples, lambda2, lossBound);
+}
+
+
+void lbfgs_main(vector<string>& files, double lambda2, double lossBound) {
+    cout << "load examples." << endl;
+    int start = clock();
+    vector<Example*> examples;
+    loadExamples(examples, files);
+    initgap(examples);
+    cout << "load examples cost " << (clock() - start)/(double)CLOCKS_PER_SEC << endl;
+    printf("example size is : %ld\n", examples.size());
+    do_main(examples, lambda2, lossBound);
 }
 
 double* loadModel() {
@@ -595,22 +605,42 @@ double* loadModel() {
 
 int main(int argc, char* argv[]) {
     int start_time = clock();
-    char* filename = argv[1];
-    string mode(filename);
+    string mode(argv[1]);
+
+    char* filename;
+    double lambda2;
+    double lossBound;
+    vector<string> files;
+
     if(mode == "load") {
         LogLoss ll;
         double* weight = loadModel();
         outputAcu(weight, ll, argv[2]);
-    } else {
-        double lambda2 = atof(argv[2]);
-        double lossBound = atof(argv[3]);
-        INDEX_BIT = atoi(argv[4]);
+    } else { 
+        if(mode == "file") {
+            filename = argv[2];
+            files.push_back(string(filename));
+            lambda2 = atof(argv[3]);
+            lossBound = atof(argv[4]);
+            INDEX_BIT = atoi(argv[5]);
+        } else if(mode == "cat") {
+            lambda2 = atof(argv[2]);
+            lossBound = atof(argv[3]);
+            INDEX_BIT = atoi(argv[4]);
+        } else if(mode == "dir") {
+            char* dir = argv[2];
+            lambda2 = atof(argv[3]);
+            lossBound = atof(argv[4]);
+            INDEX_BIT = atoi(argv[5]);
+            list_directory(dir, files);
+        }
+        for(auto file : files) cout << file << endl;
         INDEX_SIZE = 1 << INDEX_BIT;
         WEIGHT_INDEX = (int*) calloc(INDEX_SIZE, sizeof(int));
         if(mode == "cat") {
-            lbfgs_main(NULL, lambda2, lossBound);
+            lbfgs_main(lambda2, lossBound);
         } else {
-            lbfgs_main(filename, lambda2, lossBound);
+            lbfgs_main(files, lambda2, lossBound);
         }
         cout << "finish program." << endl;
         cout << "Used time: " << (clock() - start_time)/double(CLOCKS_PER_SEC) << endl; 

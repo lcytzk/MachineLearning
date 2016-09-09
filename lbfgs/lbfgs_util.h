@@ -18,14 +18,14 @@ double dot(double* x, double* y, int size) {
 double dot(double* x, double* y, int size, ThreadPool &pool, int batchSize) {
     vector<future<double>> results;
     int gap = size / batchSize + 1;
-    for(int i = 0 ; i < batchSize; ++i) {
+    for(int i = 0; i < batchSize; ++i) {
         int start = gap * i;
         int end = gap * (i + 1);
         if(start >= size) break;
         end = end > size ? size : end;
         results.emplace_back( 
             pool.enqueue( [x, y, start, end] {
-                double res;
+                double res = 0;
                 for(int i = start; i < end; ++i) {
                     res += x[i] * y[i];
                 }
@@ -53,7 +53,7 @@ void scal(double* direction, double stepSize, int size) {
 void scal(double* direction, double stepSize, int size, ThreadPool &pool, int batchSize) {
     vector<future<void>> results;
     int gap = size / batchSize + 1;
-    for(int i = 0 ; i < batchSize; ++i) {
+    for(int i = 0; i < batchSize; ++i) {
         int start = gap * i;
         int end = gap * (i + 1);
         if(start >= size) break;
