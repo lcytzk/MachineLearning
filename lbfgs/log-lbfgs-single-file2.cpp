@@ -20,6 +20,9 @@ int SAMPLE_SIZE = 0;
 int ROUND = 1;
 int START_TIME, END_TIME;
 
+int STEP_BACK = 1;
+int STOP = 2;
+int NORMAL = 0;
 int W_SIZE;
 int INDEX_BIT = 18;
 int INDEX_SIZE;
@@ -116,7 +119,7 @@ class LBFGS {
 			stepSize = 0.01;
 			stopGrad = 0;
 		};
-		bool learn();
+		int learn();
         void init();
 };
 
@@ -198,7 +201,7 @@ double* LBFGS::getGradient() {
     return grad;
 }
 
-bool LBFGS::learn() {
+int LBFGS::learn() {
     stepForward();
     predict();
     END_TIME = clock(); 
@@ -206,13 +209,13 @@ bool LBFGS::learn() {
     START_TIME = END_TIME;
     if(isnan(lossSum)) {
         printf("Loss sum nan so stop.\n");
-        return false;
+        return STOP;
     }
     if(!evalWolfe()) {
         stepBackward();
         printf("\t step back\n");
         stepSize /= 2;
-        return true;
+        return STEP_BACK;
     }
     printf("\n");
 //    if(wolfe1 == 0 || isnan(wolfe1)) {
@@ -223,12 +226,12 @@ bool LBFGS::learn() {
     if(lossBound == 0) {
         if(isnan(lossSum) || lossSum/preLossSum > 0.999) {
             printf("Decrease in loss in 0.01%% so stop.\n");
-            return false;
+            return STOP;
         }
     } else {
         if(isnan(lossSum) || lossSum/SAMPLE_SIZE < lossBound) {
             printf("Reach the bound %f so stop.\n", lossBound);
-            return false;
+            return STOP;
         }
     }
     getGradient();
@@ -243,7 +246,7 @@ bool LBFGS::learn() {
     cal_and_save_ST();
     getDirection(lastGrad);
     stepSize = STEP_SIZE;
-    return true;
+    return NORMAL;
 }
 
 void LBFGS::init() {
@@ -598,7 +601,9 @@ void lbfgs_main(vector<string>& files, double lambda2, double lossBound) {
                 lbfgs.init();
             }
             for(int i = 0; i < 3; ++i) {
-                if(!lbfgs.learn()) return;
+                int res = lbfgs.learn();
+                if(res == STOP) return;
+                if(res == STEP_BACK) --i;
             }
             for(int i = 0; i < examples.size(); ++i) {
                 delete examples[i];
