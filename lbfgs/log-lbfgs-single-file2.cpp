@@ -229,17 +229,18 @@ int LBFGS::learn() {
 //        return false;
 //    }
 //    cout << "wolfe1    " << wolfe1 << endl;
-    if(lossBound == 0) {
-        if(isnan(lossSum) || lossSum/preLossSum > 0.999) {
-            printf("Decrease in loss in 0.01%% so stop.\n");
-            return STOP;
-        }
-    } else {
-        if(isnan(lossSum) || lossSum/SAMPLE_SIZE < lossBound) {
-            printf("Reach the bound %f so stop.\n", lossBound);
-            return STOP;
-        }
-    }
+    //if(lossBound == 0) {
+    //    if(isnan(lossSum) || lossSum/preLossSum > 0.999) {
+    //        printf("Decrease in loss in 0.01%% so stop.\n");
+    //        return STOP;
+    //    }
+    //} else {
+    //    if(isnan(lossSum) || lossSum/SAMPLE_SIZE < lossBound) {
+    //        printf("Reach the bound %f so stop.\n", lossBound);
+    //        return STOP;
+    //    }
+    //}
+    if(lossBound != 0 && lossSum/SAMPLE_SIZE < lossBound) return STOP;
     getGradient();
 //    float grad_norm = norm(grad);
 //    cout << "norm   " << grad_norm << endl;
@@ -604,7 +605,7 @@ void lbfgs_main(vector<string>& files, double lambda2, double lossBound) {
             SAMPLE_SIZE = examples.size();
             lbfgs.freshSTStack();
             lbfgs.init();
-            for(int i = 0; i < 15; ++i) {
+            for(int i = 0; i < 5; ++i) {
                 int res = lbfgs.learn();
                 if(res == STOP) return;
                 if(res == STEP_BACK) --i;
