@@ -450,7 +450,7 @@ void outputAcu(double* weight, Loss& ll, char* testfile) {
 }
 
 void freeExamples(vector<Example*>* examples) {
-    free(examples);
+    delete examples;
 }
 
 void loadExamples(vector<Example*>& examples, istream& f) {
@@ -473,12 +473,12 @@ void loadExamples(vector<Example*>& examples, istream& f) {
                     for(int i = 0; i < 1000; ++i) {
                         x.clear();
                         splitStringAndHash(*strs[i], ' ', x, y);
-                        free(strs[i]);
+                        delete strs[i];
                         Example* example = new Example(x);
                         example->label = y;
                         exs->push_back(example);
                     }
-                    free(strs);
+                    delete strs;
                     return exs;
                 })
             );
@@ -494,12 +494,12 @@ void loadExamples(vector<Example*>& examples, istream& f) {
                 for(int i = 0; i < count; ++i) {
                     x.clear();
                     splitStringAndHash(*strs[i], ' ', x, y);
-                    free(strs[i]);
+                    delete strs[i];
                     Example* example = new Example(x);
                     example->label = y;
                     exs->push_back(example);
                 }
-                free(strs);
+                delete strs;
                 return exs;
             })
         );
