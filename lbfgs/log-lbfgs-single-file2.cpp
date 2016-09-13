@@ -92,7 +92,7 @@ class LBFGS {
         int weightSize;
         double* lastGrad;
         double* grad;
-        double* direction;
+        double* direction = NULL;
         double lossSum;
         double preLossSum;
 
@@ -304,7 +304,7 @@ double* LBFGS::getDirection(double* qq) {
             rho[i] = rho[i+1];
         }
     }
-    if(direction == NULL) free(direction);
+    //if(direction != NULL) free(direction);
     direction = q;
 	return q;
 }
@@ -449,6 +449,10 @@ void outputAcu(double* weight, Loss& ll, char* testfile) {
     cout << "sampleSize: " << sampleSize << endl;
 }
 
+void freeExamples(vector<Example*>* examples) {
+    free(examples);
+}
+
 void loadExamples(vector<Example*>& examples, istream& f) {
     vector<future<vector<Example*>*>> results;
     string** strs = new string*[1001];
@@ -503,6 +507,7 @@ void loadExamples(vector<Example*>& examples, istream& f) {
     for(auto && job : results) {
         vector<Example*>* res = job.get();
         examples.insert(examples.begin(), res->begin(), res->end());
+        freeExamples(res);
     }
 }
 
