@@ -191,6 +191,7 @@ double* LBFGS::getGradient() {
         for(int i = 0; i < W_SIZE; ++i) {
             grad[i] += g[i];
         }
+        free(g);
     }
     //updateGradientWithLambda2(grad);
     return grad;
@@ -303,6 +304,7 @@ double* LBFGS::getDirection(double* qq) {
             rho[i] = rho[i+1];
         }
     }
+    free(direction);
     direction = q;
 	return q;
 }
