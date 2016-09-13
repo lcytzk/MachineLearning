@@ -71,6 +71,7 @@ class Example {
                 ++index;
             }
         }
+        ~Example() { free(features); }
 };
 
 class LBFGS {
@@ -600,7 +601,7 @@ void lbfgs_main(vector<string>& files, double lambda2, double lossBound) {
                 if(!lbfgs.learn()) return;
             }
             for(int i = 0; i < examples.size(); ++i) {
-                free(examples[i]);
+                delete examples[i];
             }
             examples.clear();
         }
