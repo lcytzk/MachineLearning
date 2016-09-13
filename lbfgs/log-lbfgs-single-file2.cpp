@@ -597,11 +597,7 @@ void lbfgs_main(vector<string>& files, double lambda2, double lossBound) {
         for(string& file : files) {
             loadExamples(examples, file);
             SAMPLE_SIZE = examples.size();
-            if(needInit) {
-                needInit = false;
-                lbfgs.init();
-            }
-            lbfgs.setPreLoss(1);
+            lbfgs.init();
             for(int i = 0; i < 3; ++i) {
                 int res = lbfgs.learn();
                 if(res == STOP) return;
