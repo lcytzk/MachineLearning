@@ -121,6 +121,7 @@ class LBFGS {
 		};
 		int learn();
         void init();
+        void setPreLoss(double l) preLossSum = l;
 };
 
 bool LBFGS::evalWolfe() {
@@ -600,6 +601,7 @@ void lbfgs_main(vector<string>& files, double lambda2, double lossBound) {
                 needInit = false;
                 lbfgs.init();
             }
+            lbfgs.setPreLoss(1);
             for(int i = 0; i < 3; ++i) {
                 int res = lbfgs.learn();
                 if(res == STOP) return;
