@@ -121,7 +121,12 @@ class LBFGS {
 		};
 		int learn();
         void init();
-        void setPreLoss(double l) preLossSum = l;
+        void freshSTStack() {
+            delete s;
+            delete t;
+            s = new LoopArray(m);
+            t = new LoopArray(m);
+        }
 };
 
 bool LBFGS::evalWolfe() {
@@ -597,8 +602,9 @@ void lbfgs_main(vector<string>& files, double lambda2, double lossBound) {
         for(string& file : files) {
             loadExamples(examples, file);
             SAMPLE_SIZE = examples.size();
+            lbfgs.freshSTStack();
             lbfgs.init();
-            for(int i = 0; i < 3; ++i) {
+            for(int i = 0; i < 15; ++i) {
                 int res = lbfgs.learn();
                 if(res == STOP) return;
                 if(res == STEP_BACK) --i;
