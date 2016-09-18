@@ -92,7 +92,7 @@ class LBFGS {
         int weightSize;
         double* lastGrad;
         double* grad;
-        double* direction;
+        double* direction = NULL;
         double lossSum;
         double preLossSum;
 
@@ -304,7 +304,7 @@ double* LBFGS::getDirection(double* qq) {
             rho[i] = rho[i+1];
         }
     }
-    free(direction);
+    if(direction) free(direction);
     direction = q;
 	return q;
 }
@@ -365,22 +365,6 @@ void splitStringAndHash(string s, const char delimiter, vector<int>& x, double& 
         }
     }
 } 
-
-bool getNextXY(vector<int>& x, double& y, istream& fo) {
-    if(fo.eof()) {
-        cout << "reach the file end.1" << endl;
-        return false;
-    }
-    string str;
-    getline(fo, str);
-    if(str.length() < 2) {
-        cout << "reach the file end.2" << endl;
-        return false;
-    }
-    x.clear();
-    splitStringAndHash(str, ' ', x, y);
-    return true;
-}
 
 bool getOnlyNextXY(vector<int>& x, double& y, istream& fo, vector<string>& v) {
     string str;
@@ -605,6 +589,34 @@ double* loadModel() {
     return WEIGHT;
 }
 
+void serialization(vector<Example*>& examples, string originalFile) {
+    FILE* fo = fopen((originalFile + ".LCY.CACHE").c_str(), "wb");
+    cout << "opend and ready to write" << endl;
+    for(Example* example : examples) {
+        fwrite(&((short) example->label), sizeof(short), 1, fo);
+        fwrite(&example->featureSize, sizeof(int), 1, fo);
+        fwrite(example->features, sizeof(int), example->featureSize, fo);
+    }
+    fclose(fo);
+    cout << "opend and ready to write" << endl;
+}
+
+void makeCache(string& file) {
+    vector<Example*> examples;
+    ifstream fi(file);
+    loadExamples(examples, fi);
+    fi.close();
+    cout << "load examples done" << endl;
+
+    serialization(examples, file);
+}
+
+void makeCache(vector<string> files) {
+    for(string& file : files) {
+        makeCache(file);
+    }
+}
+
 int main(int argc, char* argv[]) {
     int start_time = clock();
     string mode(argv[1]);
@@ -636,7 +648,8 @@ int main(int argc, char* argv[]) {
             INDEX_BIT = atoi(argv[5]);
             list_directory(dir, files);
         }
-        for(auto file : files) cout << file << endl;
+        for(auto &file : files) cout << file << endl;
+        //makeCache(files);
         INDEX_SIZE = 1 << INDEX_BIT;
         WEIGHT_INDEX = (int*) calloc(INDEX_SIZE, sizeof(int));
         if(mode == "cat") {

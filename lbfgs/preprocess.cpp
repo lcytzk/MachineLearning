@@ -108,7 +108,7 @@ void derialization() {
 
 int derializationAndCmp(vector<Example*>& es1) {
     short label;
-    int featureSize;
+    //int featureSize;
     int* features = new int[200];
     FILE* fi = fopen("se.txt", "rb");
     int i = 0;
@@ -129,11 +129,11 @@ int derializationAndCmp(vector<Example*>& es1) {
 void readAndParse(vector<Example*>& examples) {
     ifstream fi;
     //fi.open("1.txt");
-    fi.open("/mnt/storage01/yoyo_dq/vwq_20160907/000000_0");
+    fi.open("/mnt/storage01/yoyo_dq/vwq_20160917/000000_0");
     loadExamples(examples, fi);
     fi.close();
-    serialization(examples);
-    derialization();
+    //serialization(examples);
+    //derialization();
 }
 
 int cmpExps(vector<Example*>& es1, vector<Example*>& es2) {
