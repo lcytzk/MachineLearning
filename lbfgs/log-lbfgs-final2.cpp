@@ -220,8 +220,8 @@ bool LBFGS::learn() {
 //    }
 //    cout << "wolfe1    " << wolfe1 << endl;
     if(lossBound == 0) {
-        if(isnan(lossSum) || lossSum/preLossSum > 0.999) {
-            printf("Decrease in loss in 0.01%% so stop.\n");
+        if(isnan(lossSum) || lossSum/preLossSum > 0.99) {
+            printf("Decrease in loss in 0.1%% so stop.\n");
             return false;
         }
     } else {
@@ -304,7 +304,6 @@ double* LBFGS::getDirection(double* qq) {
             rho[i] = rho[i+1];
         }
     }
-    free(direction);
     direction = q;
 	return q;
 }

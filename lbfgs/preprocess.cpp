@@ -23,10 +23,11 @@ class Example {
         ~Example() { free(features); }
 };
 
+int factor = (1 << 18) - 1;
 void splitStringAndHash(string s, const char delimiter, vector<int>& x, short& y) {
     const char* c = s.c_str();
-    int hash = 17;
-    int hash2 = 17;
+    uint64_t hash = 17;
+    uint64_t hash2 = 17;
     bool first = true;
     bool group = false;
     
@@ -51,7 +52,7 @@ void splitStringAndHash(string s, const char delimiter, vector<int>& x, short& y
                 first = false;
                 continue;
             }
-            x.push_back(hash2);
+            x.push_back(hash2 & factor);
         }
     }
 } 
@@ -84,6 +85,8 @@ void loadExamples(vector<Example*>& examples, istream& f) {
 
 void serialization(vector<Example*>& examples) {
     FILE* fo = fopen("se.txt", "wb");
+    int size = examples.size();
+    fwrite(&size, sizeof(int), 1, fo);
     for(Example* example : examples) {
         fwrite(&example->label, sizeof(short), 1, fo);
         fwrite(&example->featureSize, sizeof(int), 1, fo);
@@ -98,20 +101,66 @@ void derialization() {
     int featureSize = -1;
     int* features = new int[200];
     FILE* fi = fopen("se.txt", "rb");
+    //FILE* fi = fopen("test.txt.LCY.CACHE", "rb");
+    int size;
+    fread(&size, sizeof(int), 1, fi);
+    cout << size << endl;
     while(fread(&label, sizeof(short), 1, fi)) {
         fread(&featureSize, sizeof(int), 1, fi);
         fread(features, sizeof(int), featureSize, fi);
-        //printf("%hd\t%d\n", label, featureSize);
+        printf("%hd\t%d\n", label, featureSize);
     }
     fclose(fi);
 }
 
+void derialization2() {
+    short label1,label2;
+    int featureSize1, featureSize2;
+    int* features1 = new int[200];
+    int* features2 = new int[200];
+    FILE* fi = fopen("se.txt", "rb");
+    FILE* fi2 = fopen("test.txt.LCY.CACHE", "rb");
+    int size;
+    fread(&size, sizeof(int), 1, fi);
+    cout << size << endl;
+    fread(&size, sizeof(int), 1, fi2);
+    cout << size << endl;
+    bool errorFlag = false;
+    int errorIndex = -1;
+    while(fread(&label1, sizeof(short), 1, fi)) {
+        fread(&label2, sizeof(short), 1, fi2);
+
+        fread(&featureSize1, sizeof(int), 1, fi);
+        fread(&featureSize2, sizeof(int), 1, fi2);
+
+        fread(features1, sizeof(int), featureSize1, fi);
+        fread(features2, sizeof(int), featureSize2, fi2);
+
+        printf("%hd,%hd\t%d,%d\n", label1, label2, featureSize1, featureSize2);
+
+        for(int i = 0 ; i < featureSize1; ++i) {
+            //printf("%d,%d\n", features1[i], features2[i]);
+            if(features1[i] != features2[i]) {
+                errorFlag = true;
+                errorIndex = i;
+                break;
+            }
+        }
+        if(errorFlag) break;
+    }
+    fclose(fi);
+    cout << errorFlag << endl;
+    cout << errorIndex << endl;
+}
+
 int derializationAndCmp(vector<Example*>& es1) {
     short label;
-    //int featureSize;
+    int featureSize;
     int* features = new int[200];
     FILE* fi = fopen("se.txt", "rb");
     int i = 0;
+    int size;
+    fread(&size, sizeof(int), 1, fi);
     while(fread(&label, sizeof(short), 1, fi)) {
         fread(&featureSize, sizeof(int), 1, fi);
         fread(features, sizeof(int), featureSize, fi);
@@ -128,12 +177,12 @@ int derializationAndCmp(vector<Example*>& es1) {
 
 void readAndParse(vector<Example*>& examples) {
     ifstream fi;
-    //fi.open("1.txt");
-    fi.open("/mnt/storage01/yoyo_dq/vwq_20160917/000000_0");
+    fi.open("test.txt");
+    //fi.open("/mnt/storage01/yoyo_dq/vwq_20160917/000000_0");
     loadExamples(examples, fi);
     fi.close();
-    //serialization(examples);
-    //derialization();
+    serialization(examples);
+    derialization();
 }
 
 int cmpExps(vector<Example*>& es1, vector<Example*>& es2) {
@@ -167,7 +216,9 @@ void test() {
 }
 
 int main() {
-    //readAndParse();
-    test();
+    //vector<Example*> es;
+    //readAndParse(es);
+    //test();
+    derialization2();
 }
 

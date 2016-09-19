@@ -71,13 +71,87 @@ class Example {
                 ++index;
             }
         }
+        Example(short _label, int _featureSize, int* _features): label(_label), featureSize(_featureSize) {
+            features = (int*) malloc(_featureSize * sizeof(int));
+            memcpy(features, _features, featureSize * sizeof(int));
+        }
+        ~Example() { free(features); }
+        void output() {
+            printf("label: %f\n", label);
+            printf("featureSize: %d\n", featureSize);
+            printf("index 0: %d\n", features[0]);
+            //for(int i = 0; i < featureSize; ++i) printf("index %d: %d\n", i, features[i]);
+        }
 };
+
+class Examples {
+    private:
+        short label;
+        int featureSize;
+        int* features;
+        FILE* fi = NULL;
+        int fileIndex;
+        int sampleSize;
+        vector<string>& files;
+    public:
+        Examples(vector<string>& _files): files(_files) {
+            if(files.size() < 1) {
+                return;
+            }
+            sampleSize = 0;
+            fileIndex = 0;
+            features = new int[200];
+            for(string& file : files) {
+                FILE* ftmp = fopen((file + ".LCY.CACHE").c_str(), "rb");
+                int thisSize = -1;
+                if(fread(&thisSize, sizeof(int), 1, ftmp)) sampleSize += thisSize;
+                fclose(ftmp);
+            }
+            SAMPLE_SIZE = sampleSize;
+        }
+        Example* getNextExample() {
+            if(fread(&label, sizeof(short), 1, fi)) {
+                fread(&featureSize, sizeof(int), 1, fi);
+                fread(features, sizeof(int), featureSize, fi);
+                Example* example = new Example(label, featureSize, features);
+                return example;
+            } else {
+                fclose(fi);
+                fi = NULL;
+                ++fileIndex;
+                if(fileIndex < files.size()) {
+                    fi = fopen((files[fileIndex] + ".LCY.CACHE").c_str(), "rb");
+                    int tmp;
+                    fread(&tmp, sizeof(int), 1, fi);
+                    return getNextExample();
+                } else return NULL;
+            }
+        }
+        void reset() {
+            if(fi) fclose(fi);
+            fileIndex = 0;
+            fi = fopen((files[fileIndex] + ".LCY.CACHE").c_str(), "rb");
+            int tmp;
+            fread(&tmp, sizeof(int), 1, fi);
+        }
+        int size() { return sampleSize; }
+        ~Examples() { 
+            if(fi) fclose(fi);
+            //delete features; 
+        }
+};
+
+void freeExample(vector<Example*>& examples) {
+    for(Example* e : examples) {
+        delete e;
+    }
+}
 
 class LBFGS {
 	private:
 		double stopGrad;
 		Loss& loss;
-        vector<Example*>& examples;
+        Examples& examples;
 		int m;
         double wolfe1Bound =  0.5;
 		double* alpha;
@@ -104,9 +178,10 @@ class LBFGS {
 		void updateST(double* _s, double* _t);
 		double* getDirection(double* q);
         void predict();
-        double* getGradient();
+        double* predictAndGradient();
+        //double* getGradient();
 	public:
-		LBFGS(Loss& _loss, vector<Example*>& _examples, double* _weight, int wSize, double _lambda2, double _lossBound): loss(_loss),  examples(_examples), weight(_weight), weightSize(wSize), lambda2(_lambda2), lossBound(_lossBound) {
+		LBFGS(Loss& _loss, Examples& _examples, double* _weight, int wSize, double _lambda2, double _lossBound): loss(_loss),  examples(_examples), weight(_weight), weightSize(wSize), lambda2(_lambda2), lossBound(_lossBound) {
             m = 15;
 			alpha = (double*) malloc(sizeof(double) * m);
 			rho = (double*) malloc(sizeof(double) * m);
@@ -130,33 +205,61 @@ void updateCondition(int* fs, double p, int size) {
     }
 }
 
-void LBFGS::predict() {
+double* LBFGS::predictAndGradient() {
+    examples.reset();
     preLossSum = lossSum;
     lossSum = 0;
     //double reg = 0.5 * lambda2 * dot(weight, weight, W_SIZE);
-    vector<future<double>> results;
+    vector<future<double*>> results;
     int gap = SAMPLE_SIZE / BATCH_SIZE + 1;
+    bool reachEnd = false;
     for(int i = 0 ; i < BATCH_SIZE; ++i) {
+        vector<Example*>* subexamples = new vector<Example*>();
         int start = gap * i;
         int end = gap * (i + 1);
         if(start >= SAMPLE_SIZE) break;
         end = end > SAMPLE_SIZE ? SAMPLE_SIZE : end;
+        for(int j = 0; j < gap; ++j) {
+            Example* e = examples.getNextExample();
+            //e->output();
+            if(e) subexamples->push_back(e);
+            else {
+                reachEnd = true;
+                break;
+            }
+        }
+        if(subexamples->size() == 0) {
+            delete subexamples;
+            break;
+        }
         results.emplace_back(
-            pool.enqueue( [this, start, end] {
+            pool.enqueue( [this, gap, subexamples] {
+                double* res = (double*) calloc(W_SIZE + 1,  sizeof(double));
                 double sum = 0;
-                for(int index = start; index < end; ++index) {
-                Example* example = this->examples[index];
-                example->prediction = this->loss.getVal(weight, example->features, example->featureSize);
-                //updateCondition(example->features, example->prediction, example->featureSize);
-                sum += loss.getLoss(example->prediction, example->label);
+                for(Example* example : *subexamples) {
+                    example->prediction = this->loss.getVal(weight, example->features, example->featureSize);
+                    sum += loss.getLoss(example->prediction, example->label);
+                    this->loss.updateGradient(example->prediction, example->features, example->label, res+1, example->featureSize, SAMPLE_SIZE);
+                    delete example;
                 }
-                return sum;
+                delete subexamples;
+                res[0] = sum;
+                return res;
             })
         );
+        if(reachEnd) break;
     }
+    // The space of grad will be used as delta grad, so no memory leak.
+    grad = (double*) calloc(W_SIZE, sizeof(double));
     for(auto && result : results) {
-        lossSum += result.get();
+        double* res = result.get();
+        lossSum += res[0];
+        for(int i = 1; i <= W_SIZE; ++i) {
+            grad[i-1] += res[i];
+        }
+        free(res);
     }
+    return grad;
 }
 
 void LBFGS::updateGradientWithLambda2(double* grad) {
@@ -165,41 +268,9 @@ void LBFGS::updateGradientWithLambda2(double* grad) {
     }
 }
 
-double* LBFGS::getGradient() {
-    grad = (double*) calloc(W_SIZE, sizeof(double));
-    vector<future<double*>> results;
-    int gap = SAMPLE_SIZE / BATCH_SIZE + 1;
-    for(int i = 0 ; i < BATCH_SIZE; ++i) {
-        int start = gap * i;
-        int end = gap * (i + 1);
-        if(start >= SAMPLE_SIZE) break;
-        end = end > SAMPLE_SIZE ? SAMPLE_SIZE : end;
-        results.emplace_back(
-            pool.enqueue( [this, start, end] {
-                double* thisgrad = (double*) calloc(W_SIZE, sizeof(double));
-                for(int index = start; index < end; ++index) {
-                Example* example = this->examples[index];
-                this->loss.updateGradient(example->prediction, example->features, example->label, thisgrad, example->featureSize, SAMPLE_SIZE);
-                //updateCondition(example->features, example->prediction, example->featureSize);
-                }
-                return thisgrad;
-            })
-        );
-    }
-    for(auto && result : results) {
-        double* g = result.get();
-        for(int i = 0; i < W_SIZE; ++i) {
-            grad[i] += g[i];
-        }
-        free(g);
-    }
-    //updateGradientWithLambda2(grad);
-    return grad;
-}
-
 bool LBFGS::learn() {
     stepForward();
-    predict();
+    predictAndGradient();
     END_TIME = clock(); 
     printf("#%d#\tlossSum: %f\t preLossSum: %f\tstepSize:%f\tused time: %f", ROUND, lossSum/SAMPLE_SIZE, preLossSum/SAMPLE_SIZE, stepSize, (END_TIME - START_TIME)/(double)CLOCKS_PER_SEC);
     START_TIME = END_TIME;
@@ -214,14 +285,9 @@ bool LBFGS::learn() {
         return true;
     }
     printf("\n");
-//    if(wolfe1 == 0 || isnan(wolfe1)) {
-//        cout << "wolfe1 is nan  " << wolfe1 << endl;
-//        return false;
-//    }
-//    cout << "wolfe1    " << wolfe1 << endl;
     if(lossBound == 0) {
-        if(isnan(lossSum) || lossSum/preLossSum > 0.999) {
-            printf("Decrease in loss in 0.01%% so stop.\n");
+        if(isnan(lossSum) || lossSum/preLossSum > 0.99) {
+            printf("Decrease in loss in 0.1%% so stop.\n");
             return false;
         }
     } else {
@@ -230,15 +296,6 @@ bool LBFGS::learn() {
             return false;
         }
     }
-    getGradient();
-//    float grad_norm = norm(grad);
-//    cout << "norm   " << grad_norm << endl;
-//  if(grad_norm < stopGrad && isnan(grad_norm)) {
-    //if(lossSum == 0 || grad_norm == 0 || isnan(grad_norm)) {
-    //if(lossSum == 0 || isnan(grad_norm)) {
-    //    cout << "Reach the gap  " << grad_norm << endl;
-    //    return false;
-    //}
     cal_and_save_ST();
     getDirection(lastGrad);
     stepSize = STEP_SIZE;
@@ -247,8 +304,9 @@ bool LBFGS::learn() {
 
 void LBFGS::init() {
     cout << "lbfgs init" << endl;
-    predict();
-    lastGrad = getGradient();
+    //predict();
+    //lastGrad = getGradient();
+    lastGrad = predictAndGradient();
     getDirection(lastGrad);
 }
 
@@ -265,6 +323,7 @@ void LBFGS::stepBackward() {
     lossSum = preLossSum;
 }
 
+// After cal_and_save_ST lastGrad will be grad;
 void LBFGS::cal_and_save_ST() {
 	//  weight = weight - direction * stepSize;
 	// s = thisW - lastW = -direction * step
@@ -304,7 +363,7 @@ double* LBFGS::getDirection(double* qq) {
             rho[i] = rho[i+1];
         }
     }
-    if(direction) free(direction);
+    //if(direction) free(direction);
     direction = q;
 	return q;
 }
@@ -523,9 +582,36 @@ void initgap(vector<Example*>& examples) {
     }
 }
 
+void initgap2(Examples& examples) {
+    int count = INDEX_SIZE;
+    WEIGHT = (double*) calloc(count, sizeof(double));
+    CONDITION = (double*) calloc(count, sizeof(double));
+    W_SIZE = count;
+}
+
 void do_main(vector<Example*>& examples, double lambda2, double lossBound) {
+    //int start, end;
+    //SAMPLE_SIZE = examples.size();
+    //LogLoss ll;
+	//LBFGS lbfgs(ll, Examples(), WEIGHT, W_SIZE, lambda2, lossBound);
+    //cout << "begin learn" << endl;
+    //lbfgs.init();
+    //start = end;
+    //bool flag = false;
+    //int LEADN_START = clock();
+    //for(int i = 0; i < 10; ++i) {
+    //    START_TIME = clock();
+    //	if(!lbfgs.learn()) {
+    //        break;
+    //    }
+    //    ++ROUND;
+    //}
+    //printf("Learned finished, used %f.\n", (clock() - LEARN_START) / (double) CLOCKS_PER_SEC);
+    //saveModel(WEIGHT);
+}
+
+void do_main(Examples examples, double lambda2, double lossBound) {
     int start, end;
-    SAMPLE_SIZE = examples.size();
     LogLoss ll;
 	LBFGS lbfgs(ll, examples, WEIGHT, W_SIZE, lambda2, lossBound);
     cout << "begin learn" << endl;
@@ -533,7 +619,7 @@ void do_main(vector<Example*>& examples, double lambda2, double lossBound) {
     start = end;
     bool flag = false;
     int LEADN_START = clock();
-    for(int i = 0; i < 1000; ++i) {
+    for(int i = 0; i < 100; ++i) {
         START_TIME = clock();
     	if(!lbfgs.learn()) {
             break;
@@ -555,13 +641,13 @@ void lbfgs_main(double lambda2, double lossBound) {
     do_main(examples, lambda2, lossBound);
 }
 
-
 void lbfgs_main(vector<string>& files, double lambda2, double lossBound) {
     cout << "load examples." << endl;
     int start = clock();
-    vector<Example*> examples;
-    loadExamples(examples, files);
-    initgap(examples);
+    Examples examples(files);
+    //vector<Example*> examples;
+    //loadExamples(examples, files);
+    initgap2(examples);
     cout << "load examples cost " << (clock() - start)/(double)CLOCKS_PER_SEC << endl;
     printf("example size is : %ld\n", examples.size());
     do_main(examples, lambda2, lossBound);
@@ -591,29 +677,42 @@ double* loadModel() {
 
 void serialization(vector<Example*>& examples, string originalFile) {
     FILE* fo = fopen((originalFile + ".LCY.CACHE").c_str(), "wb");
-    cout << "opend and ready to write" << endl;
+    short tmp;
+    int itmp = examples.size();
+    fwrite(&itmp, sizeof(int), 1, fo);
     for(Example* example : examples) {
-        fwrite(&((short) example->label), sizeof(short), 1, fo);
+        tmp = (short) example->label;
+        fwrite(&tmp, sizeof(short), 1, fo);
         fwrite(&example->featureSize, sizeof(int), 1, fo);
         fwrite(example->features, sizeof(int), example->featureSize, fo);
     }
     fclose(fo);
-    cout << "opend and ready to write" << endl;
 }
 
 void makeCache(string& file) {
     vector<Example*> examples;
-    ifstream fi(file);
+    ifstream fi;
+    fi.open(file);
     loadExamples(examples, fi);
+    cout << "Example size is  " << examples.size() << endl;
     fi.close();
-    cout << "load examples done" << endl;
 
     serialization(examples, file);
+    cout << "make cache done" << endl;
 }
 
-void makeCache(vector<string> files) {
+bool cacheFileExist(string& name) {
+    if (FILE *file = fopen((name + ".LCY.CACHE").c_str(), "r")) {
+        printf("File %s's cache already exist!\n", name.c_str());
+        fclose(file);
+        return true;
+    }
+    return false;
+}
+
+void makeCache(vector<string>& files) {
     for(string& file : files) {
-        makeCache(file);
+        if(!cacheFileExist(file)) makeCache(file);
     }
 }
 
@@ -649,9 +748,9 @@ int main(int argc, char* argv[]) {
             list_directory(dir, files);
         }
         for(auto &file : files) cout << file << endl;
-        //makeCache(files);
         INDEX_SIZE = 1 << INDEX_BIT;
         WEIGHT_INDEX = (int*) calloc(INDEX_SIZE, sizeof(int));
+        makeCache(files);
         if(mode == "cat") {
             lbfgs_main(lambda2, lossBound);
         } else {
