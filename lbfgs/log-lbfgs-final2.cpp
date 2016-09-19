@@ -71,6 +71,7 @@ class Example {
                 ++index;
             }
         }
+        ~Example() { free(features); }
 };
 
 class LBFGS {
@@ -468,12 +469,12 @@ void loadExamples(vector<Example*>& examples, istream& f) {
                     for(int i = 0; i < 1000; ++i) {
                         x.clear();
                         splitStringAndHash(*strs[i], ' ', x, y);
-                        free(strs[i]);
+                        delete strs[i];
                         Example* example = new Example(x);
                         example->label = y;
                         exs->push_back(example);
                     }
-                    free(strs);
+                    delete strs;
                     return exs;
                 })
             );
@@ -489,12 +490,12 @@ void loadExamples(vector<Example*>& examples, istream& f) {
                 for(int i = 0; i < count; ++i) {
                     x.clear();
                     splitStringAndHash(*strs[i], ' ', x, y);
-                    free(strs[i]);
+                    delete strs[i];
                     Example* example = new Example(x);
                     example->label = y;
                     exs->push_back(example);
                 }
-                free(strs);
+                delete strs;
                 return exs;
             })
         );
