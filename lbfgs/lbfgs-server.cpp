@@ -39,7 +39,7 @@ int main(int argc, char *argv[]) {
     listen(sockfd,5);
     clilen = sizeof(cli_addr);
 
-    int i = 30;
+    int i = 3;
     vector<future<double*>> results;
     vector<int> socks;
     int size;
@@ -63,14 +63,17 @@ int main(int argc, char *argv[]) {
        } else {
            results.emplace_back(
                pool.enqueue( [newsockfd, &size] {
-                   double* weight = (double*) malloc(size * sizeof(double));
+                   double* grad = (double*) malloc(size * sizeof(double));
+                   char* target = (char*) grad;
                    int sum = 0;
                    while(sum != sizeof(double) * size) {
-                       int n = recv(newsockfd, weight + sum/sizeof(double), sizeof(double) * size, 0);
+                       int n = recv(newsockfd, target + sum, sizeof(double) * size, 0);
                        sum += n;
                    }
-                   printf("rtn norm:%f\n", norm(weight, size));
-                   return weight;
+                   //for(int i = 0; i < size; ++i) {
+                        //printf("grad[%d] value:%f\n", 58787, grad[58787]);
+                   //}
+                   return grad;
                })
            );
        }
