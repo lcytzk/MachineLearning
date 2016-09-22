@@ -10,7 +10,7 @@
 #include "ThreadPool.h"
 
 int THREAD_MAX = 10;
-int TOTAL_NODE = 1;
+int TOTAL_NODE = 2;
 
 ThreadPool pool(10);
 
@@ -21,6 +21,8 @@ void error(const char *msg)
 }
 
 int main(int argc, char *argv[]) {
+    TOTAL_NODE = atoi(argv[1]);
+
     int sockfd, newsockfd, portno;
     socklen_t clilen;
     struct sockaddr_in serv_addr, cli_addr;
@@ -47,7 +49,6 @@ int main(int argc, char *argv[]) {
     int SAMPLE_SIZE = 0;
 
     while(true) {
-       printf("ready to get a conn\n");
        newsockfd = accept(sockfd, 
                    (struct sockaddr *) &cli_addr, 
                    &clilen);
@@ -63,6 +64,9 @@ int main(int argc, char *argv[]) {
        } else {
            results.emplace_back(
                pool.enqueue( [newsockfd, &size] {
+                   int nodeNum;
+                   recv(newsockfd, &nodeNum, sizeof(int), 0);
+
                    double* grad = (double*) malloc(size * sizeof(double));
                    char* target = (char*) grad;
                    int sum = 0;
@@ -73,6 +77,7 @@ int main(int argc, char *argv[]) {
                    //for(int i = 0; i < size; ++i) {
                         //printf("grad[%d] value:%f\n", 58787, grad[58787]);
                    //}
+                   printf("Node %d data recvd.\n", nodeNum);
                    return grad;
                })
            );
@@ -98,7 +103,6 @@ int main(int argc, char *argv[]) {
            }
            for(int sock : socks) {
                int n = send(sock, rtn, sizeof(double) * size, 0);
-               printf("send n:%d\n", n);
                close(sock);
            }
            free(rtn);

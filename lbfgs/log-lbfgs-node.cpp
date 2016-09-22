@@ -29,6 +29,7 @@ double* WEIGHT;
 double* CONDITION;
 int THREAD_MAX = 10;
 int BATCH_SIZE = 15;
+int NODE_NUM;
 ThreadPool pool(THREAD_MAX);
 
 void outputModel(double* w, int size) {
@@ -260,9 +261,7 @@ double* LBFGS::predictAndGradient() {
         }
         free(res);
     }
-    cout << "before LAG nrom:  " << norm(lossAndGrad, W_SIZE + 1) << endl;
-    asyncLossAndGrad(lossAndGrad, W_SIZE + 1);
-    cout << "after LAG nrom:  " << norm(lossAndGrad, W_SIZE + 1) << endl;
+    asyncLossAndGrad(lossAndGrad, W_SIZE + 1, NODE_NUM);
     lossSum = lossAndGrad[0];
     grad = (double*) calloc(W_SIZE, sizeof(double));
     memcpy(grad, lossAndGrad + 1, W_SIZE * sizeof(double));
@@ -729,7 +728,8 @@ void makeCache(vector<string>& files) {
 
 int main(int argc, char* argv[]) {
     int start_time = clock();
-    string mode(argv[1]);
+    NODE_NUM = atoi(argv[1]);
+    string mode(argv[2]);
 
     char* filename;
     double lambda2;
@@ -739,23 +739,23 @@ int main(int argc, char* argv[]) {
     if(mode == "load") {
         LogLoss ll;
         double* weight = loadModel();
-        outputAcu(weight, ll, argv[2]);
+        outputAcu(weight, ll, argv[3]);
     } else { 
         if(mode == "file") {
-            filename = argv[2];
+            filename = argv[3];
             files.push_back(string(filename));
-            lambda2 = atof(argv[3]);
-            lossBound = atof(argv[4]);
-            INDEX_BIT = atoi(argv[5]);
+            lambda2 = atof(argv[4]);
+            lossBound = atof(argv[5]);
+            INDEX_BIT = atoi(argv[6]);
         } else if(mode == "cat") {
-            lambda2 = atof(argv[2]);
-            lossBound = atof(argv[3]);
-            INDEX_BIT = atoi(argv[4]);
-        } else if(mode == "dir") {
-            char* dir = argv[2];
             lambda2 = atof(argv[3]);
             lossBound = atof(argv[4]);
             INDEX_BIT = atoi(argv[5]);
+        } else if(mode == "dir") {
+            char* dir = argv[3];
+            lambda2 = atof(argv[4]);
+            lossBound = atof(argv[5]);
+            INDEX_BIT = atoi(argv[6]);
             list_directory(dir, files);
         }
         for(auto &file : files) cout << file << endl;
