@@ -76,6 +76,7 @@ class Example {
         Example(short _label, int _featureSize, int* _features): label(_label), featureSize(_featureSize) {
             features = (int*) malloc(_featureSize * sizeof(int));
             memcpy(features, _features, featureSize * sizeof(int));
+            for(int i = 0; i < featureSize; ++i) features[i] &= (W_SIZE - 1);
         }
         ~Example() { free(features); }
         void output() {
@@ -426,8 +427,9 @@ void splitStringAndHash(string s, const char delimiter, vector<int>& x, double& 
                 first = false;
                 continue;
             }
-            WEIGHT_INDEX[hash2 & (INDEX_SIZE - 1)] = 1;
-            x.push_back(hash2 & (INDEX_SIZE - 1));
+            //WEIGHT_INDEX[hash2 & (INDEX_SIZE - 1)] = 1;
+            //x.push_back(hash2 & (INDEX_SIZE - 1));
+            x.push_back(hash2);
         }
     }
 } 
