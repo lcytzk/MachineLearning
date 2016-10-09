@@ -1,7 +1,6 @@
 #include <stdlib.h>
 #include <memory.h>
 #include <vector>
-#include <unsorted_map>
 #include <iostream>
 #include <time.h>
 #include <fstream>
@@ -31,7 +30,6 @@ double* CONDITION;
 int THREAD_MAX = 10;
 int BATCH_SIZE = 15;
 ThreadPool pool(THREAD_MAX);
-unsorted_map<string, int> fmap;
 
 void outputModel(double* w, int size) {
     cout << "model" << endl;
