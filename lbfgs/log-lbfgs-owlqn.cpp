@@ -260,16 +260,7 @@ bool LBFGS::learn() {
         }
     }
     getGradient();
-//    float grad_norm = norm(grad);
-//    cout << "norm   " << grad_norm << endl;
-//  if(grad_norm < stopGrad && isnan(grad_norm)) {
-    //if(lossSum == 0 || grad_norm == 0 || isnan(grad_norm)) {
-    //if(lossSum == 0 || isnan(grad_norm)) {
-    //    cout << "Reach the gap  " << grad_norm << endl;
-    //    return false;
-    //}
     cal_and_save_ST();
-    //getDirection(lastGrad, false);
     getDirection(lastGrad, true);
     stepSize = STEP_SIZE;
     return true;
@@ -279,7 +270,6 @@ void LBFGS::init() {
     cout << "lbfgs init" << endl;
     predict();
     lastGrad = getGradient();
-    //getDirection(lastGrad, false);
     getDirection(lastGrad, true);
 }
 
@@ -287,13 +277,11 @@ void LBFGS::stepForward() {
     memcpy(lastWeight, weight, W_SIZE * sizeof(double));
     for(int i = 0; i < W_SIZE; ++i) {
         double tmp = weight[i] + direction[i] * stepSize;
-        //printf("weight: %f\ttmp:%f\tdirection:%f\n", weight[i], tmp, direction[i]);
         if(weight[i] * tmp < 0) {
             weight[i] = 0;
         } else {
             weight[i] = tmp;
         }
-        //weight[i] -= direction[i] * stepSize;
     }
 }
 
@@ -331,7 +319,10 @@ double* LBFGS::getDirection(double* qq, bool pseudo) {
 	// two loop
 	double* q = (double*) malloc(W_SIZE * sizeof(double));
     if(pseudo) do_pseudo(q, qq);
-    else memcpy(q, qq, W_SIZE * sizeof(double));
+    else {
+        memcpy(q, qq, W_SIZE * sizeof(double));
+        scal(q, -1, W_SIZE);
+    }
 	int k = min(m, s->size());
     if(k > 0) rho[k-1] = 1.0 / dot((*s)[k-1], (*t)[k-1], W_SIZE);
 	for (int i = k-1; i >= 0; --i) {
