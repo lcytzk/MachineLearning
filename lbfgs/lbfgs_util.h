@@ -231,7 +231,7 @@ double LogLoss::getFirstDeri(double prediction, double _y) {
 
 void LogLoss::updateGradient(double prediction, int* _x, double _y, double* t, int size, int sampleSize) {
     for (int i = 0; i < size; ++i) {
-        t[_x[i]] += (prediction - _y) / sampleSize;
+        t[_x[i]] += (prediction - _y);// / sampleSize;
     }
 }
 

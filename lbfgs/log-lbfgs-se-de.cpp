@@ -619,7 +619,7 @@ void do_main(Examples examples, double lambda2, double lossBound) {
     start = end;
     bool flag = false;
     int LEADN_START = clock();
-    for(int i = 0; i < 100; ++i) {
+    for(int i = 0; i < 1000; ++i) {
         START_TIME = clock();
     	if(!lbfgs.learn()) {
             break;

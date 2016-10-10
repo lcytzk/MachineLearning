@@ -7,7 +7,6 @@
 #include <string>
 #include <unordered_map>
 #include <functional>
-#include <algorithm>
 
 #include "lbfgs_util.h"
 #include "ThreadPool.h"
@@ -16,7 +15,7 @@
 using namespace std;
 
 int LEARN_START = 0;
-double STEP_SIZE = 0.2;
+double STEP_SIZE = 1.3;
 int SAMPLE_SIZE = 0;    
 int ROUND = 1;
 int START_TIME, END_TIME;
@@ -113,9 +112,8 @@ class LBFGS {
         void do_pseudo(double* dir, double* grad);
         void fixDirSigns();
 	public:
-		LBFGS(Loss& _loss, vector<Example*>& _examples, double* _weight, int wSize, double _lambda2, double _lossBound): loss(_loss),  examples(_examples), weight(_weight), weightSize(wSize), lambda2(_lambda2), lossBound(_lossBound) {
+		LBFGS(Loss& _loss, vector<Example*>& _examples, double* _weight, int wSize, double _lambda2, double _lossBound, double _lambda1): loss(_loss),  examples(_examples), weight(_weight), weightSize(wSize), lambda2(_lambda2), lossBound(_lossBound), lambda1(_lambda1) {
             m = 15;
-            fill(weight, weight + W_SIZE, 0.001);
 			alpha = (double*) malloc(sizeof(double) * m);
 			rho = (double*) malloc(sizeof(double) * m);
 			s = new LoopArray(m);
@@ -124,7 +122,6 @@ class LBFGS {
 			stopGrad = 0;
             steepestDescDir = (double*) malloc(W_SIZE * sizeof(double));
             lastWeight = (double*) malloc(W_SIZE * sizeof(double));
-            lambda1 = 0.001;
 		};
 		bool learn();
         void init();
@@ -156,10 +153,10 @@ void LBFGS::predict() {
             pool.enqueue( [this, start, end] {
                 double sum = 0;
                 for(int index = start; index < end; ++index) {
-                Example* example = this->examples[index];
-                example->prediction = this->loss.getVal(weight, example->features, example->featureSize);
-                //updateCondition(example->features, example->prediction, example->featureSize);
-                sum += loss.getLoss(example->prediction, example->label);
+                    Example* example = this->examples[index];
+                    example->prediction = this->loss.getVal(weight, example->features, example->featureSize);
+                    //updateCondition(example->features, example->prediction, example->featureSize);
+                    sum += loss.getLoss(example->prediction, example->label);
                 }
                 return sum;
             })
@@ -576,11 +573,11 @@ void initgap(vector<Example*>& examples) {
     }
 }
 
-void do_main(vector<Example*>& examples, double lambda2, double lossBound) {
+void do_main(vector<Example*>& examples, double lambda2, double lossBound, double lambda1) {
     int start, end;
     SAMPLE_SIZE = examples.size();
     LogLoss ll;
-	LBFGS lbfgs(ll, examples, WEIGHT, W_SIZE, lambda2, lossBound);
+	LBFGS lbfgs(ll, examples, WEIGHT, W_SIZE, lambda2, lossBound, lambda1);
     cout << "begin earn" << endl;
     lbfgs.init();
     start = end;
@@ -597,7 +594,7 @@ void do_main(vector<Example*>& examples, double lambda2, double lossBound) {
     saveModel(WEIGHT);
 }
 
-void lbfgs_main(double lambda2, double lossBound) {
+void lbfgs_main(double lambda2, double lossBound, double lambda1) {
     cout << "load examples." << endl;
     int start = clock();
     vector<Example*> examples;
@@ -605,11 +602,11 @@ void lbfgs_main(double lambda2, double lossBound) {
     initgap(examples);
     cout << "load examples cost " << (clock() - start)/(double)CLOCKS_PER_SEC << endl;
     printf("example size is : %ld\n", examples.size());
-    do_main(examples, lambda2, lossBound);
+    do_main(examples, lambda2, lossBound, lambda1);
 }
 
 
-void lbfgs_main(vector<string>& files, double lambda2, double lossBound) {
+void lbfgs_main(vector<string>& files, double lambda2, double lossBound, double lambda1) {
     cout << "load examples." << endl;
     int start = clock();
     vector<Example*> examples;
@@ -617,7 +614,7 @@ void lbfgs_main(vector<string>& files, double lambda2, double lossBound) {
     initgap(examples);
     cout << "load examples cost " << (clock() - start)/(double)CLOCKS_PER_SEC << endl;
     printf("example size is : %ld\n", examples.size());
-    do_main(examples, lambda2, lossBound);
+    do_main(examples, lambda2, lossBound, lambda1);
 }
 
 double* loadModel() {
@@ -647,7 +644,7 @@ int main(int argc, char* argv[]) {
     string mode(argv[1]);
 
     char* filename;
-    double lambda2;
+    double lambda2, lambda1;
     double lossBound;
     vector<string> files;
 
@@ -662,24 +659,27 @@ int main(int argc, char* argv[]) {
             lambda2 = atof(argv[3]);
             lossBound = atof(argv[4]);
             INDEX_BIT = atoi(argv[5]);
+            lambda1 = atof(argv[6]);
         } else if(mode == "cat") {
             lambda2 = atof(argv[2]);
             lossBound = atof(argv[3]);
             INDEX_BIT = atoi(argv[4]);
+            lambda1 = atof(argv[5]);
         } else if(mode == "dir") {
             char* dir = argv[2];
             lambda2 = atof(argv[3]);
             lossBound = atof(argv[4]);
             INDEX_BIT = atoi(argv[5]);
+            lambda1 = atof(argv[6]);
             list_directory(dir, files);
         }
         for(auto file : files) cout << file << endl;
         INDEX_SIZE = 1 << INDEX_BIT;
         WEIGHT_INDEX = (int*) calloc(INDEX_SIZE, sizeof(int));
         if(mode == "cat") {
-            lbfgs_main(lambda2, lossBound);
+            lbfgs_main(lambda2, lossBound, lambda1);
         } else {
-            lbfgs_main(files, lambda2, lossBound);
+            lbfgs_main(files, lambda2, lossBound, lambda1);
         }
         cout << "finish program." << endl;
         cout << "Used time: " << (clock() - start_time)/double(CLOCKS_PER_SEC) << endl; 

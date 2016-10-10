@@ -96,6 +96,7 @@ class LBFGS {
         double* direction;
         double lossSum;
         double preLossSum;
+        double* lastWeight;
 
         void stepForward();
         void stepBackward();
@@ -115,6 +116,7 @@ class LBFGS {
 			t = new LoopArray(m);
 			stepSize = 0.01;
 			stopGrad = 0;
+            lastWeight = (double*) malloc(W_SIZE * sizeof(double));
 		};
 		bool learn();
         void init();
@@ -254,15 +256,14 @@ void LBFGS::init() {
 }
 
 void LBFGS::stepForward() {
+    memcpy(lastWeight, weight, W_SIZE * sizeof(double));
     for(int i = 0; i < W_SIZE; ++i) {
         weight[i] -= direction[i] * stepSize;
     }
 }
 
 void LBFGS::stepBackward() {
-    for(int i = 0; i < W_SIZE; ++i) {
-        weight[i] += direction[i] * stepSize;
-    }
+    memcpy(weight, lastWeight, W_SIZE * sizeof(double));
     lossSum = preLossSum;
 }
 
