@@ -56,11 +56,13 @@ int main(int argc, char *argv[]) {
        recv(newsockfd, &first, sizeof(bool), 0);
        if(first) {
            int sampleSize;
+           int nodeNum;
+           recv(newsockfd, &nodeNum, sizeof(int), 0);
            recv(newsockfd, &sampleSize, sizeof(int), 0);
            recv(newsockfd, &size, sizeof(int), 0);
            size = size + 1;
            SAMPLE_SIZE += sampleSize;
-           printf("SAMPLESIZE  %d\n", SAMPLE_SIZE);
+           printf("SAMPLESIZE  %d \t nodeNum: %d \n", SAMPLE_SIZE, nodeNum);
        } else {
            results.emplace_back(
                pool.enqueue( [newsockfd, &size] {

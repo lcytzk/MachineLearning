@@ -597,7 +597,7 @@ void initgap2(Examples& examples) {
     WEIGHT = (double*) calloc(count, sizeof(double));
     CONDITION = (double*) calloc(count, sizeof(double));
     W_SIZE = count;
-    asyncSampleSizeAndWSize(examples.size(), W_SIZE, SAMPLE_SIZE);
+    asyncSampleSizeAndWSize(examples.size(), W_SIZE, SAMPLE_SIZE, NODE_NUM);
 }
 
 void do_main(vector<Example*>& examples, double lambda2, double lossBound) {

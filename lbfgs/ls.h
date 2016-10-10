@@ -20,7 +20,8 @@ void list_directory(const char *dirname, vector<string>& filenames) {
         /* Print all files and directories within the directory */
         while ((ent = readdir (dir)) != NULL) {
             string s(ent->d_name);
-            if(s.find(".") == string::npos) filenames.push_back(dname + s);
+            if(s.find(".") == string::npos && s.find("_") != string::npos) filenames.push_back(dname + s);
+            //if(s.find(".") == string::npos) filenames.push_back(dname + s);
         }
         closedir (dir);
     } else {

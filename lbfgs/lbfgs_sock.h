@@ -37,7 +37,7 @@ void asyncLossAndGrad(double* lossAndGrad, int size, int nodeNum) {
     printf("recv done\n");
 }
 
-void asyncSampleSizeAndWSize(int sampleSize, int wSize, int& allSample) {
+void asyncSampleSizeAndWSize(int sampleSize, int wSize, int& allSample, int nodeNum) {
     int port = 10086;
     int sockfd = socket(AF_INET, SOCK_STREAM, 0);
     struct hostent* server = gethostbyname(HOST_NAME.c_str());
@@ -53,6 +53,7 @@ void asyncSampleSizeAndWSize(int sampleSize, int wSize, int& allSample) {
 
     bool first = true;
     send(sockfd, &first, sizeof(bool), 0);
+    send(sockfd, &nodeNum, sizeof(int), 0);
     send(sockfd, &sampleSize, sizeof(int), 0);
     send(sockfd, &wSize, sizeof(int), 0);
     printf("send done\n");
