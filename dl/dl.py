@@ -2,6 +2,9 @@
 
 from numpy import *
 import math
+import sys
+
+passes = 100
 
 class Example:
 
@@ -38,12 +41,11 @@ class SqLoss:
 class DeepNode:
 
     def __init__(self, dim, x, activation = Sigmoid()):
-        self.w = zeros((1, dim))
+        self.w = [0.01] * dim
         self.rate = 0.1
         self.act = activation
         self.y = None
         self.x = x
-        self.g = None
 
     def cal(self):
         x = [node.y for node in self.x]
@@ -51,17 +53,16 @@ class DeepNode:
         return self.y
 
     def update(self, g):
-        self.g = g
-        localg = self.act.firstDerivative(0, self.y)
+        localg = self.y * (1 - self.y)
         back = []
         for i in xrange(len(self.w)):
-            back.append(g[i] * localg * self.w[i])
-            self.w[i] -= self.rate * localg * self.x[i].y * g[i]
+            back.append(g * localg * self.w[i])
+            self.w[i] -= self.rate * localg * self.x[i].y * g
         self.back = back
 
 class DeepModel:
 
-    def __init__(self, hiddenNum = 1, hiddenDim = 2, inputDim = 2, outputDim = 1):
+    def __init__(self, hiddenNum = 0, hiddenDim = 1, inputDim = 2, outputDim = 1):
         self.hs = []
         self.input = [DeepNode(1, None) for i in xrange(inputDim)]
         lastInp = self.input
@@ -94,28 +95,36 @@ class DeepModel:
         g = [node.y - y] * len(node.w)
         for layer in self.hs[::-1]:
             gn = None
-            for node in layer:
-                node.update(g)
+            #print g
+            for i in xrange(len(layer)):
+                node = layer[i]
+                node.update(g[i])
                 if gn == None:
-                    gn = []
-                    for i in g:
-                        gn.append(i)
-                else:
-                    for i in xrange(len(g)):
-                        gn[i] += g[i]
+                    gn = [0] * len(node.back)
+                for ii in xrange(len(node.back)):
+                    gn[ii] += node.back[ii]
+            g = gn
 
-        return
+    def pred(self, x):
+        for i in xrange(len(x)):
+            self.input[i].y = x[i]
+        for layer in self.hs:
+            x = [node.cal() for node in layer]
+        return x[0]
 
 
 def learn(step, dm, dp):
-    for i in range(100):
+    for i in range(passes):
         dp = DataProvider("train.data")
         loss = 0.0
         count = 0
         for e in dp:
             loss += dm.train(e[1], e[0])
             count += 1
-        print "loss: %f" % (loss / count)
+        #print "loss: %f" % (loss / count)
+    print "pred %f" % dm.pred([0, 1])
+    print "pred %f" % dm.pred([1, 0])
 
 if __name__ == '__main__':
+    passes = int(sys.argv[1])
     learn(step = 1, dm = DeepModel(inputDim = 2), dp = DataProvider("train.data"))
