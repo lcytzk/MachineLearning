@@ -22,7 +22,7 @@ class DataProvider:
         if line == '':
             raise StopIteration
         label, rest = line.split(',')
-        return (float(label), map(int, rest.split()))
+        return (float(label), map(float, rest.split()))
 
 class Sigmoid:
 
@@ -39,7 +39,7 @@ class DeepNode:
 
     def __init__(self, dim, x, activation = Sigmoid()):
         self.w = zeros((1, dim))
-        self.rate = 0.001
+        self.rate = 0.1
         self.act = activation
         self.y = None
         self.x = x
@@ -52,10 +52,12 @@ class DeepNode:
 
     def update(self, g):
         self.g = g
-        self.back = self.act.firstDerivative(0, self.y)
+        localg = self.act.firstDerivative(0, self.y)
+        back = []
         for i in xrange(len(self.w)):
-            self.w[i] -= self.rate * self.back * self.x[i].y
-            self.back =
+            back.append(g[i] * localg * self.w[i])
+            self.w[i] -= self.rate * localg * self.x[i].y * g[i]
+        self.back = back
 
 class DeepModel:
 
@@ -81,26 +83,33 @@ class DeepModel:
             self.input[i].y = x[i]
         for layer in self.hs:
             x = [node.cal() for node in layer]
-            print x
+            #print x
         loss = 0.5 * ((y - x[0]) ** 2)
         self.update(y)
-        print "loss : %f" % loss
+        #print "loss : %f" % loss
+        return loss
 
     def update(self, y):
+        node = self.hs[-1][0]
+        g = [node.y - y] * len(node.w)
         for layer in self.hs[::-1]:
+            gn = None
             for node in layer:
-                g = node.y - y
                 node.update(g)
-                for i in xrange(len(node.w)):
-                        node.w[i] -= node
+                if gn == None:
+
         return
 
 
 def learn(step, dm, dp):
-    #for i in xrange(step):
-    for e in dp:
-        #print e
-        dm.train(e[1], e[0])
+    for i in range(4):
+        dp = DataProvider("train.data")
+        loss = 0.0
+        count = 0
+        for e in dp:
+            loss += dm.train(e[1], e[0])
+            count += 1
+        print "loss: %f" % (loss / count)
 
 if __name__ == '__main__':
-    learn(step = 1, dm = DeepModel(), dp = DataProvider("train.data"))
+    learn(step = 1, dm = DeepModel(inputDim = 2), dp = DataProvider("train.data"))
