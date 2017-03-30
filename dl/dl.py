@@ -97,12 +97,18 @@ class DeepModel:
             for node in layer:
                 node.update(g)
                 if gn == None:
+                    gn = []
+                    for i in g:
+                        gn.append(i)
+                else:
+                    for i in xrange(len(g)):
+                        gn[i] += g[i]
 
         return
 
 
 def learn(step, dm, dp):
-    for i in range(4):
+    for i in range(100):
         dp = DataProvider("train.data")
         loss = 0.0
         count = 0
