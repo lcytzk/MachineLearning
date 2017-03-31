@@ -41,7 +41,7 @@ class SqLoss:
 class DeepNode:
 
     def __init__(self, dim, x, activation = Sigmoid()):
-        self.w = [0.01] * dim
+        self.w = [0.01] * (dim + 1)
         self.rate = 0.1
         self.act = activation
         self.y = None
@@ -49,20 +49,22 @@ class DeepNode:
 
     def cal(self):
         x = [node.y for node in self.x]
+        x.append(1)
         self.y = 1 / (1 + math.exp(-dot(self.w, x)))
         return self.y
 
     def update(self, g):
         localg = self.y * (1 - self.y)
         back = []
-        for i in xrange(len(self.w)):
+        for i in xrange(len(self.w) - 1):
             back.append(g * localg * self.w[i])
             self.w[i] -= self.rate * localg * self.x[i].y * g
+        self.w[-1] -= self.rate * localg * g
         self.back = back
 
 class DeepModel:
 
-    def __init__(self, hiddenNum = 0, hiddenDim = 1, inputDim = 2, outputDim = 1):
+    def __init__(self, hiddenNum = 1, hiddenDim = 5, inputDim = 2, outputDim = 1):
         self.hs = []
         self.input = [DeepNode(1, None) for i in xrange(inputDim)]
         lastInp = self.input
